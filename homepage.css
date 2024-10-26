@@ -16,7 +16,7 @@ body h1 {
 /* Styling for the menu container */
 .menu {
     display: flex;
-    justify-content: space-between;
+    justify-content: space-around;
     background-color: #e0e0e0;
     padding: 10px 0;
     text-align: center;
@@ -39,9 +39,60 @@ body h1 {
     color: #fff;
 }
 
-/* Media query for small screens - stacks the menu buttons vertically */
+/* Layout for entry section (teams and players) */
+.entry-section {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+}
+
+/* Styling for entry logo */
+.entry-logo {
+    width: 100px;
+    height: auto;
+    margin-right: 20px;
+}
+
+/* Caption styling */
+.entry-name {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 0;
+    width: 100px;
+}
+
+/* Styling for entry stats table */
+.entry-stats {
+    width: 600px; /* Set a fixed width for the entire table */
+    margin-left: 20px;
+    border-collapse: collapse;
+    table-layout: fixed; /* Enforces fixed layout */
+}
+
+.entry-stats td {
+    padding: 8px;
+    font-size: 0.9em;
+    border-bottom: 1px solid #ddd;
+}
+
+/* Set equal widths for all cells */
+.entry-stats td:first-child,
+.entry-stats td:nth-child(3) {
+    width: 70%; /* Fixed width for label cells */
+    font-weight: bold;
+    text-align: left;
+}
+
+.entry-stats td:nth-child(2),
+.entry-stats td:nth-child(4) {
+    width: 70%; /* Fixed width for value cells */
+    text-align: right;
+}
+
+/* Media query for small screens */
 @media (max-width: 600px) {
-    /* Comment: Switch layout for small screens */
+    /* Switch layout for small screens */
     .menu {
         flex-direction: column;
     }
@@ -53,5 +104,16 @@ body h1 {
 
     .menu a:last-child {
         border-bottom: none;
+    }
+
+    /* Adjust entry section layout for small screens */
+    .entry-section {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .entry-stats {
+        width: auto;
+        margin-left: 0;
     }
 }
