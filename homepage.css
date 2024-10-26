@@ -64,10 +64,10 @@ body h1 {
 
 /* Styling for entry stats table */
 .entry-stats {
-    width: 600px; /* Set a fixed width for the entire table */
+    width: 600px; /* Width for the entire table */
     margin-left: 20px;
     border-collapse: collapse;
-    table-layout: fixed; /* Enforces fixed layout */
+    table-layout: fixed; /* Fixed layout */
 }
 
 .entry-stats td {
@@ -79,14 +79,14 @@ body h1 {
 /* Set equal widths for all cells */
 .entry-stats td:first-child,
 .entry-stats td:nth-child(3) {
-    width: 70%; /* Fixed width for label cells */
+    width: 70%; /* Fixed width for labels */
     font-weight: bold;
     text-align: left;
 }
 
 .entry-stats td:nth-child(2),
 .entry-stats td:nth-child(4) {
-    width: 70%; /* Fixed width for value cells */
+    width: 70%; /* Fixed width for values */
     text-align: right;
 }
 
