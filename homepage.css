@@ -1,13 +1,119 @@
+/* General styling for the body */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+}
+
+/* Styling for the header title */
 body h1 {
     text-align: center;
     background-color: #9900ff;
-    padding: 15px;  
-    margin-top: -10px; 
-    margin-left: -10px;
-    margin-right: -10px;
-    font-size: 50px;
+    color: #fff;
+    padding: 15px;
+    margin: 0;
 }
 
-.button {
-    background-color: #c0c0c0;
+/* Styling for the menu container */
+.menu {
+    display: flex;
+    justify-content: space-around;
+    background-color: #e0e0e0;
+    padding: 10px 0;
+    text-align: center;
+}
+
+/* Styling for each menu button */
+.menu a {
+    flex: 1;
+    padding: 15px;
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+    background-color: #ddd;
+    border: 1px solid #bbb;
+}
+
+/* Highlight for the current page button */
+.menu .current {
+    background-color: #9900ff;
+    color: #fff;
+}
+
+/* Layout for entry section (teams and players) */
+.entry-section {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+}
+
+/* Styling for entry logo */
+.entry-logo {
+    width: 100px;
+    height: auto;
+    margin-right: 20px;
+}
+
+/* Caption styling */
+.entry-name {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 0;
+    width: 100px;
+}
+
+/* Styling for entry stats table */
+.entry-stats {
+    width: 600px; /* Width for the entire table */
+    margin-left: 20px;
+    border-collapse: collapse;
+    table-layout: fixed; /* Fixed layout */
+}
+
+.entry-stats td {
+    padding: 8px;
+    font-size: 0.9em;
+    border-bottom: 1px solid #ddd;
+}
+
+/* Set equal widths for all cells */
+.entry-stats td:first-child,
+.entry-stats td:nth-child(3) {
+    width: 70%; /* Fixed width for labels */
+    font-weight: bold;
+    text-align: left;
+}
+
+.entry-stats td:nth-child(2),
+.entry-stats td:nth-child(4) {
+    width: 70%; /* Fixed width for values */
+    text-align: right;
+}
+
+/* Media query for small screens */
+@media (max-width: 600px) {
+    /* Switch layout for small screens */
+    .menu {
+        flex-direction: column;
+    }
+
+    .menu a {
+        border-top: none;
+        border-bottom: 1px solid #bbb;
+    }
+
+    .menu a:last-child {
+        border-bottom: none;
+    }
+
+    /* Adjust entry section layout for small screens */
+    .entry-section {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .entry-stats {
+        width: auto;
+        margin-left: 0;
+    }
 }
