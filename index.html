@@ -2,121 +2,81 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="homepage.css">
-    <title>Homepage</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NFL Fantasy Sports and Betting Analysis Dashboard">
+    <title>LTR FANTASY - NFL Analysis Hub</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/homepage.css">
+    <link rel="icon" type="image/png" href="images/favicon.png">
 </head>
 <body>
-    <h1>LTR FANTASY</h1>
-    <div class="menu">
-        <a href="index.html" class="current">Home</a>
-        <a href="teams.html">Teams</a>
-        <a href="players.html">Players</a>
-        <a href="lineups.html">Lineups</a>
-    </div>
-    <div class="main-content">
-    <h2>Top Teams</h2>
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="genericLogo.jpg" alt="Team Logo" class="entry-logo">
-        </a>
-        <p class="entry-name">Team Name 1</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>n/a</td>
-                <td>PPG:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>n/a</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
+    <header>
+        <h1>LTR FANTASY</h1>
+        <nav class="menu" role="navigation">
+            <a href="index.html" class="current" aria-current="page">Home</a>
+            <a href="teams.html">Teams</a>
+            <a href="players.html">Players</a>
+            <a href="lineups.html">Lineups</a>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <!-- Live Games Section -->
+        <section class="live-games" aria-label="Live Games">
+            <h2>Live Games</h2>
+            <div id="live-games-container" class="games-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Top Teams Section -->
+        <section class="top-teams" aria-label="Top Teams">
+            <h2>Top Teams</h2>
+            <div class="teams-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Top Players Section -->
+        <section class="top-players" aria-label="Top Players">
+            <h2>Top Players</h2>
+            <div class="players-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Fantasy Insights Section -->
+        <section class="fantasy-insights" aria-label="Fantasy Insights">
+            <h2>Fantasy Insights</h2>
+            <div id="insights-container" class="insights-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Betting Trends Section -->
+        <section class="betting-trends" aria-label="Betting Trends">
+            <h2>Betting Trends</h2>
+            <div id="trends-container" class="trends-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Data provided by ESPN API • Updated: <span id="last-updated">Loading...</span></p>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loader"></div>
     </div>
 
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="genericLogo.jpg" alt="Team Logo" class="entry-logo">
-        </a>
-        <p class="entry-name">Team Name 2</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>n/a</td>
-                <td>PPG:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>n/a</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="genericLogo.jpg" alt="Team Logo" class="entry-logo">
-        </a>
-        <p class="entry-name">Team Name 3</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>n/a</td>
-                <td>PPG:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>n/a</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-
-    <h2>Top Players</h2>
-    <div class="entry-section">
-        <a href="playerCard.html">
-            <img src="genericProfilePic.jpg" alt="Player Profile" class="entry-logo">
-        </a>
-        <p class="entry-name">Player Name 1</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Games Played:</td><td>n/a</td>
-                <td>Average Score:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>Assists:</td><td>n/a</td>
-                <td>Rebounds:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="entry-section">
-        <a href="playerCard.html">
-            <img src="genericProfilePic.jpg" alt="Player Profile" class="entry-logo">
-        </a>
-        <p class="entry-name">Player Name 2</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Games Played:</td><td>n/a</td>
-                <td>Average Score:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>Assists:</td><td>n/a</td>
-                <td>Rebounds:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="entry-section">
-        <a href="playerCard.html">
-            <img src="genericProfilePic.jpg" alt="Player Profile" class="entry-logo">
-        </a>
-        <p class="entry-name">Player Name 3</p>
-        <table class="entry-stats">
-            <tr>
-                <td>Games Played:</td><td>n/a</td>
-                <td>Average Score:</td><td>n/a</td>
-            </tr>
-            <tr>
-                <td>Assists:</td><td>n/a</td>
-                <td>Rebounds:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-    </div>
+    <!-- Scripts -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/api.js"></script>
+    <script src="scripts/utils.js"></script>
+    <script src="scripts/storage.js"></script>
+    <script src="scripts/ui.js"></script>
+    <script src="scripts/main.js"></script>
 </body>
 </html>
