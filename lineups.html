@@ -1,21 +1,47 @@
+<!-- lineups.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Lineups</title>
-    <link rel="stylesheet" href="homepage.css">
+    <title>LTR Fantasy - Lineups</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/lineups.css">
 </head>
-<body>
-    <h1>LTR FANTASY</h1>
-    <div class="menu">
-        <a href="index.html">Home</a>
-        <a href="teams.html">Teams</a>
-        <a href="players.html">Players</a>
-        <a href="lineups.html" class="current">Lineups</a>
-    </div>
-    <main>
+<body data-page="lineups">
+    <header>
+        <h1>LTR FANTASY</h1>
+        <nav class="menu">
+            <a href="index.html">Home</a>
+            <a href="teams.html">Teams</a>
+            <a href="players.html">Players</a>
+            <a href="lineups.html" class="current">Lineups</a>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <section class="lineup-builder">
+            <h2>Build Your Lineup</h2>
+            <div id="lineup-container">
+                <!-- Lineup positions will be dynamically populated here -->
+            </div>
+            <div class="lineup-actions">
+                <button id="save-lineup">Save Lineup</button>
+                <button id="optimize-lineup">Optimize Lineup</button>
+                <button id="clear-lineup">Clear Lineup</button>
+            </div>
+            <div id="total-projected-points"></div>
+        </section>
     </main>
+
+    <footer>
+        <p>Data provided by ESPN API • Updated: <span id="last-updated">Loading...</span></p>
+    </footer>
+
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loader"></div>
+    </div>
+
+    <script type="module" src="scripts/pages/lineups.js"></script>
 </body>
 </html>

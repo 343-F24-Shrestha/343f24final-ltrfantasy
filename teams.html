@@ -3,72 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Teams</title>
-    <link rel="stylesheet" href="homepage.css">
+    <meta name="description" content="NFL Teams Analysis and Betting Trends">
+    <title>LTR FANTASY - Teams</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/teams.css">
+    <link rel="icon" type="image/png" href="images/favicon.png">
 </head>
-<body>
-    <h1>LTR FANTASY</h1>
-    <div class="menu">
-        <a href="index.html">Home</a>
-        <a href="teams.html" class="current">Teams</a>
-        <a href="players.html">Players</a>
-        <a href="lineups.html">Lineups</a>
-    </div>
-    <main>
+<body data-page="teams">
+    <header>
+        <h1>LTR FANTASY</h1>
+        <nav class="menu">
+            <a href="index.html">Home</a>
+            <a href="teams.html" class="current">Teams</a>
+            <a href="players.html">Players</a>
+            <a href="lineups.html">Lineups</a>
+        </nav>
+    </header>
+
+    <main role="main" class="main-content">
+        <!-- Filters Section -->
+        <section class="filters-section">
+            <div class="search-container">
+                <input type="text" id="team-search" placeholder="Search teams..." aria-label="Search teams">
+            </div>
+            <div class="filter-controls">
+                <select id="conference-filter" aria-label="Filter by conference">
+                    <option value="ALL">All Conferences</option>
+                    <option value="AFC">AFC</option>
+                    <option value="NFC">NFC</option>
+                </select>
+                <select id="division-filter" aria-label="Filter by division">
+                    <option value="ALL">All Divisions</option>
+                    <option value="North">North</option>
+                    <option value="South">South</option>
+                    <option value="East">East</option>
+                    <option value="West">West</option>
+                </select>
+                <select id="sort-options" aria-label="Sort teams">
+                    <option value="winPercentage">Sort by Win %</option>
+                    <option value="pointsPerGame">Sort by Points/Game</option>
+                    <option value="pointsAllowed">Sort by Points Allowed</option>
+                    <option value="atsRecord">Sort by ATS Record</option>
+                </select>
+            </div>
+        </section>
+
+        <!-- Teams Grid -->
+        <section class="teams-section">
+            <div id="teams-container" class="teams-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Betting Trends Section -->
+        <section class="betting-trends-section">
+            <h2>League-wide Betting Trends</h2>
+            <div id="league-trends" class="trends-grid">
+                <!-- Dynamically populated by JavaScript -->
+            </div>
+        </section>
     </main>
-    <div class="main-content">
-    <h2>Top Teams</h2>
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="chiefs.png" alt="Team Logo" class="entry-logo">
-        </a>
-        <a href="https://www.chiefs.com/" class="entry-name">Kansas City Chiefs</a>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>W: 7 L: 0 T: 0</td>
-                <td>PPG:</td><td>24.3</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>17.2</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
+
+    <footer>
+        <p>Data provided by ESPN API • Updated: <span id="last-updated">Loading...</span></p>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loader"></div>
     </div>
 
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="broncos.png" alt="Team Logo" class="entry-logo">
-        </a>
-        <a href="https://www.denverbroncos.com/" class="entry-name">Denver Broncos</a>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>W: 5 L: 3 T: 0</td>
-                <td>PPG:</td><td>20.7</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>15.1</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="entry-section">
-        <a href="teamCard.html">
-            <img src="chargers.png" alt="Team Logo" class="entry-logo">
-        </a>
-        <a href="https://www.chargers.com/" class="entry-name">Los Angeles Chargers</a>
-        <table class="entry-stats">
-            <tr>
-                <td>Win-Loss Record:</td><td>W: 4 L: 3 T: 0</td>
-                <td>PPG:</td><td>17.7</td>
-            </tr>
-            <tr>
-                <td>PAPG:</td><td>13.8</td>
-                <td>Current Streak:</td><td>n/a</td>
-            </tr>
-        </table>
-    </div>
-    </div>
+    <!-- Scripts -->
+    <script type="module" src="scripts/main.js"></script>
 </body>
 </html>
