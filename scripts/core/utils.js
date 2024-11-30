@@ -149,3 +149,19 @@ export default {
     handleError,
     sortBy
 };
+
+export const showLoading = () => {
+    document.getElementById('loading-overlay')?.classList.remove('hidden');
+    updateFooter('Loading...');
+  };
+  
+  export const hideLoading = () => {
+    document.getElementById('loading-overlay')?.classList.add('hidden');
+  };
+  
+  export const updateFooter = (message) => {
+    const footer = document.getElementById('last-updated');
+    if (footer) {
+      footer.textContent = `${message} • ${new Date().toLocaleTimeString()}`;
+    }
+  };

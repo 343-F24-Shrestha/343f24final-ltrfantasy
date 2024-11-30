@@ -1,7 +1,7 @@
 // pages/players.js
 import NFLDataService from '../core/api.js';
 import StorageManager from '../core/storage.js';
-import { formatters, createElement, clearElement, handleError, sortBy } from '../core/utils.js';
+import { formatters, createElement, clearElement, handleError, sortBy, showLoading, hideLoading, updateFooter } from '../core/utils.js';
 
 class PlayersManager {
     constructor() {
@@ -48,11 +48,16 @@ class PlayersManager {
 
     async loadPlayers() {
         try {
+            showLoading();
             const players = await this.api.getAllActivePlayers();
             this.players = await this.enhancePlayersWithStats(players);
             this.renderPlayers();
+            updateFooter('Player data loaded successfully');
         } catch (error) {
             handleError(error, 'loadPlayers');
+            updateFooter(`Error loading players: ${error.message}`);
+        } finally {
+            hideLoading();
         }
     }
 

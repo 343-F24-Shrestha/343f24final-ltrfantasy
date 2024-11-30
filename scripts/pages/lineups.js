@@ -1,7 +1,7 @@
 // pages/lineups.js
 import NFLDataService from '../core/api.js';
 import StorageManager from '../core/storage.js';
-import { formatters, createElement, clearElement, handleError } from '../core/utils.js';
+import { formatters, createElement, clearElement, handleError, sortBy, showLoading, hideLoading, updateFooter } from '../core/utils.js';
 
 class LineupManager {
     constructor() {
@@ -62,11 +62,16 @@ class LineupManager {
 
     async loadAvailablePlayers() {
         try {
+            showLoading();
             const players = await this.api.getAllActivePlayers();
             this.availablePlayers = await this.enhancePlayersWithProjections(players);
             this.updatePositionDropdowns();
+            updateFooter('Available players loaded successfully');
         } catch (error) {
             handleError(error, 'loadAvailablePlayers');
+            updateFooter(`Error loading players: ${error.message}`);
+        } finally {
+            hideLoading();
         }
     }
 

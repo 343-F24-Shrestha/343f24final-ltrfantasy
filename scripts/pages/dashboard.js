@@ -1,7 +1,7 @@
-// pages/dashboard.js
+// pages/dashboard.js  (my code is a mess i know lol have fun reading this)
 import NFLDataService from '../core/api.js';
 import StorageManager from '../core/storage.js';
-import { formatters, createElement, clearElement, handleError } from '../core/utils.js';
+import { formatters, createElement, clearElement, handleError, sortBy, showLoading, hideLoading, updateFooter } from '../core/utils.js';
 
 class DashboardManager {
     constructor() {
@@ -14,52 +14,227 @@ class DashboardManager {
             insights: document.getElementById('insights-container'),
             trends: document.getElementById('trends-container')
         };
-        this.init();
+        this.updateInterval = null;
+
+        // Test storage for no reason
+        try {
+            this.storage.set('test_key', { test: 'data' });
+            const testData = this.storage.get('test_key');
+            console.log('Storage test:', testData ? 'working' : 'failed');
+        } catch (error) {
+            console.error('Storage test failed:', error);
+        }
     }
 
     async init() {
-        await this.loadAllSections();
-        this.startUpdateIntervals();
+        try {
+            showLoading();
+            // for now lets just try JUST the teams cuz the api sucks rn
+            await this.updateTopTeams();
+            //await this.loadAllSections();
+            this.loadAdditionalData();  // Then maayybbeee we load more stuff
+            // theres no way we have enough api bandwidth for this yet
+            // this.startUpdateIntervals();
+            updateFooter('Dashboard initialized successfully');
+        } catch (error) {
+            console.error('Dashboard initialization error:', error);
+            updateFooter('Error loading dashboard');
+        } finally {
+            hideLoading();
+        }
     }
+
+    async loadAdditionalData() {
+        // Load other sections in the background
+        try {
+            if (this.containers.liveGames) {
+                this.containers.liveGames.innerHTML = '<div class="loading">Loading games...</div>';
+            }
+            // Additional data loading will go here
+        } catch (error) {
+            console.error('Error loading additional data:', error);
+        }
+    }
+
+    // async loadAllSections() {
+    //     try {
+    //         await Promise.all([
+    //             this.updateLiveGames(),
+    //             this.updateTopTeams(),
+    //             this.updateTopPlayers(),
+    //             this.updateInsights()
+    //         ]);
+    //     } catch (error) {
+    //         handleError(error, 'Dashboard loadAllSections');
+    //     }
+    // }
+
+    // SIIIIIIIKKKKKKKKKEEEEEEEEEEEE
 
     async loadAllSections() {
         try {
-            await Promise.all([
-                this.updateLiveGames(),
-                this.updateTopTeams(),
-                this.updateTopPlayers(),
-                this.updateInsights()
+            showLoading();
+
+            // Load sections independently to show partial data
+            const loadSection = async (section) => {
+                try {
+                    await section();
+                    return true;
+                } catch (error) {
+                    console.warn(`Error loading section:`, error);
+                    return false;
+                }
+            };
+
+            const results = await Promise.allSettled([
+                loadSection(() => this.updateLiveGames()),
+                loadSection(() => this.updateTopTeams()),
+                loadSection(() => this.updateTopPlayers()),
+                loadSection(() => this.updateInsights())
             ]);
+
+            const successCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
+            updateFooter(`Loaded ${successCount}/4 sections successfully`);
+
         } catch (error) {
             handleError(error, 'Dashboard loadAllSections');
+            updateFooter('Error loading dashboard sections');
+        } finally {
+            hideLoading();
         }
     }
 
+    // async updateLiveGames() {
+    //     try {
+    //         const games = await this.api.getLiveGameData();
+    //         clearElement(this.containers.liveGames);
+
+    //         games.forEach(game => {
+    //             const gameElement = this.createGameElement(game);
+    //             this.containers.liveGames.appendChild(gameElement);
+    //         });
+    //     } catch (error) {
+    //         handleError(error, 'updateLiveGames');
+    //     }
+    // }
+
     async updateLiveGames() {
         try {
+            console.log('Fetching live games...');
             const games = await this.api.getLiveGameData();
+            console.log('Received live games:', games);
+
+            if (!this.containers.liveGames) {
+                console.warn('Live games container not found');
+                return;
+            }
+
             clearElement(this.containers.liveGames);
-            
+
+            if (!games || games.length === 0) {
+                console.log('No live games available');
+                this.containers.liveGames.innerHTML = '<div class="no-games">No live games at the moment</div>';
+                return;
+            }
+
             games.forEach(game => {
+                console.log('Creating game element:', game);
                 const gameElement = this.createGameElement(game);
                 this.containers.liveGames.appendChild(gameElement);
             });
+
+            console.log('Live games updated successfully');
         } catch (error) {
-            handleError(error, 'updateLiveGames');
+            console.error('Error updating live games:', error);
+            if (this.containers.liveGames) {
+                this.containers.liveGames.innerHTML = '<div class="error">Error loading live games</div>';
+            }
         }
     }
+
+    // async updateTopTeams() {
+    //     try {
+    //         const teams = await this.api.getAllTeams();
+    //         clearElement(this.containers.topTeams);
+
+    //         teams.slice(0, 5).forEach(team => {
+    //             const teamElement = this.createTeamElement(team);
+    //             this.containers.topTeams.appendChild(teamElement);
+    //         });
+    //     } catch (error) {
+    //         handleError(error, 'updateTopTeams');
+    //     }
+    // }
+
+    // Adding more debug to this one too..
+
+    // async updateTopTeams() {
+    //     try {
+    //         console.log('Fetching teams...');
+    //         const teams = await this.api.getAllTeams();
+    //         console.log('Received teams:', teams);
+
+    //         if (!this.containers.topTeams) {
+    //             console.error('Top teams container not found');
+    //             return;
+    //         }
+
+    //         clearElement(this.containers.topTeams);
+
+    //         if (!teams || teams.length === 0) {
+    //             console.log('No teams available');
+    //             this.containers.topTeams.innerHTML = '<div class="no-data">No teams available</div>';
+    //             return;
+    //         }
+
+    //         // Take top 5 teams
+    //         const topTeams = teams.slice(0, 5);
+    //         topTeams.forEach(team => {
+    //             const teamElement = this.createTeamElement(team);
+    //             if (teamElement) {
+    //                 this.containers.topTeams.appendChild(teamElement);
+    //             }
+    //         });
+
+    //         console.log('Teams displayed successfully');
+    //     } catch (error) {
+    //         console.error('Error updating teams:', error);
+    //         if (this.containers.topTeams) {
+    //             this.containers.topTeams.innerHTML = '<div class="error">Error loading teams</div>';
+    //         }
+    //     }
+    // }
+
+    // Anndd changing it again
 
     async updateTopTeams() {
         try {
             const teams = await this.api.getAllTeams();
+            console.log('Teams data received:', teams);
+
+            if (!this.containers.topTeams) {
+                console.error('Top teams container not found');
+                return;
+            }
+
             clearElement(this.containers.topTeams);
-            
-            teams.slice(0, 5).forEach(team => {
-                const teamElement = this.createTeamElement(team);
-                this.containers.topTeams.appendChild(teamElement);
+
+            if (!teams || teams.length === 0) {
+                this.containers.topTeams.innerHTML = '<div class="no-data">No teams available</div>';
+                return;
+            }
+
+            teams.slice(0, 5).forEach(teamData => {
+                const teamElement = this.createTeamElement(teamData);
+                if (teamElement) {
+                    this.containers.topTeams.appendChild(teamElement);
+                }
             });
         } catch (error) {
-            handleError(error, 'updateTopTeams');
+            console.error('Error updating teams:', error);
+            if (this.containers.topTeams) {
+                this.containers.topTeams.innerHTML = '<div class="error">Error loading teams</div>';
+            }
         }
     }
 
@@ -67,7 +242,7 @@ class DashboardManager {
         try {
             const players = await this.api.getAllActivePlayers();
             clearElement(this.containers.topPlayers);
-            
+
             players.slice(0, 5).forEach(player => {
                 const playerElement = this.createPlayerElement(player);
                 this.containers.topPlayers.appendChild(playerElement);
@@ -77,56 +252,160 @@ class DashboardManager {
         }
     }
 
+    // startUpdateIntervals() {
+    //     setInterval(() => this.updateLiveGames(), 30000);
+    //     setInterval(() => this.loadAllSections(), 300000);
+    // }
+
     startUpdateIntervals() {
-        setInterval(() => this.updateLiveGames(), 30000);
-        setInterval(() => this.loadAllSections(), 300000);
+        // Update live games every 30 seconds
+        this.updateInterval = setInterval(() => {
+            this.updateLiveGames();
+        }, 30000);
+
+        // Update all sections every 5 minutes
+        setInterval(() => {
+            this.loadAllSections();
+        }, 300000);
     }
+
+    // Add cleanup method
+    cleanup() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+    }
+
+    // createGameElement(game) {
+    //     const element = createElement('div', 'game-card');
+    //     element.innerHTML = `
+    //         <div class="teams">
+    //             <div class="team home">${game.homeTeam.name}: ${formatters.score(game.homeTeam.score)}</div>
+    //             <div class="team away">${game.awayTeam.name}: ${formatters.score(game.awayTeam.score)}</div>
+    //         </div>
+    //         <div class="game-info">
+    //             <div class="status">${game.status}</div>
+    //             <div class="odds">Spread: ${game.spread || 'N/A'}</div>
+    //         </div>
+    //     `;
+    //     return element;
+    // }
+
+    // Sike lol
+
+    // createGameElement(game) {
+    //     const element = createElement('div', 'game-card');
+    //     element.innerHTML = `
+    //         <div class="teams">
+    //             <div class="team home">
+    //                 <img src="${game.homeTeam.logo || 'images/genericLogo.jpg'}" alt="${game.homeTeam.name} logo" class="team-logo">
+    //                 <span>${game.homeTeam.name}: ${game.homeTeam.score}</span>
+    //             </div>
+    //             <div class="team away">
+    //                 <img src="${game.awayTeam.logo || 'images/genericLogo.jpg'}" alt="${game.awayTeam.name} logo" class="team-logo">
+    //                 <span>${game.awayTeam.name}: ${game.awayTeam.score}</span>
+    //             </div>
+    //         </div>
+    //         <div class="game-info">
+    //             <div class="status">${game.status}</div>
+    //             <div class="odds">Spread: ${game.spread ? game.spread : 'N/A'}</div>
+    //         </div>
+    //     `;
+    //     return element;
+    // }
+
+    // Sike again lolol
 
     createGameElement(game) {
+        if (!game) return null;
+
         const element = createElement('div', 'game-card');
-        element.innerHTML = `
-            <div class="teams">
-                <div class="team home">${game.homeTeam.name}: ${formatters.score(game.homeTeam.score)}</div>
-                <div class="team away">${game.awayTeam.name}: ${formatters.score(game.awayTeam.score)}</div>
-            </div>
-            <div class="game-info">
-                <div class="status">${game.status}</div>
-                <div class="odds">Spread: ${game.spread || 'N/A'}</div>
-            </div>
-        `;
-        return element;
+        try {
+            element.innerHTML = `
+                <div class="teams">
+                    <div class="team home">
+                        <img src="${game.homeTeam?.logo || 'images/genericLogo.jpg'}" 
+                             alt="${game.homeTeam?.name || 'Team'} logo" 
+                             class="team-logo">
+                        <span>${game.homeTeam?.name || 'Unknown'}: ${game.homeTeam?.score || '0'}</span>
+                    </div>
+                    <div class="team away">
+                        <img src="${game.awayTeam?.logo || 'images/genericLogo.jpg'}" 
+                             alt="${game.awayTeam?.name || 'Team'} logo" 
+                             class="team-logo">
+                        <span>${game.awayTeam?.name || 'Unknown'}: ${game.awayTeam?.score || '0'}</span>
+                    </div>
+                </div>
+                <div class="game-info">
+                    <div class="status">${game.status || 'Status unknown'}</div>
+                    <div class="odds">Spread: ${game.spread ? game.spread : 'N/A'}</div>
+                </div>
+            `;
+            return element;
+        } catch (error) {
+            console.warn('Error creating game element:', error);
+            element.innerHTML = '<div class="error">Error loading game data</div>';
+            return element;
+        }
     }
 
-    createTeamElement(team) {
-        const element = createElement('div', 'team-card');
-        element.innerHTML = `
-            <div class="team-header">
-                <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
-                     alt="${team.team.name} logo" 
-                     class="team-logo">
-                <h3>${team.team.name}</h3>
-            </div>
-            <div class="team-stats">
-                <div class="stat-row">
-                    <span>Record:</span>
-                    <span>${team.team.record?.overall || '0-0'}</span>
+    // createTeamElement(team) {
+    //     const element = createElement('div', 'team-card');
+    //     element.innerHTML = `
+    //         <div class="team-header">
+    //             <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
+    //                  alt="${team.team.name} logo" 
+    //                  class="team-logo">
+    //             <h3>${team.team.name}</h3>
+    //         </div>
+    //         <div class="team-stats">
+    //             <div class="stat-row">
+    //                 <span>Record:</span>
+    //                 <span>${team.team.record?.overall || '0-0'}</span>
+    //             </div>
+    //             <div class="stat-row">
+    //                 <span>PPG:</span>
+    //                 <span>${team.team.statistics?.points?.avg || '0.0'}</span>
+    //             </div>
+    //             <div class="stat-row">
+    //                 <span>PAPG:</span>
+    //                 <span>${team.team.statistics?.pointsAgainst?.avg || '0.0'}</span>
+    //             </div>
+    //             <div class="stat-row">
+    //                 <span>Streak:</span>
+    //                 <span>${team.team.streak || 'N/A'}</span>
+    //             </div>
+    //         </div>
+    //         <a href="teams.html?id=${team.team.id}" class="team-link">View Details</a>
+    //     `;
+    //     return element;
+    // }
+
+    // better or worse but.. simpler
+
+    createTeamElement(teamData) {
+        try {
+            const element = createElement('div', 'team-card');
+            const team = teamData.team;
+
+            element.innerHTML = `
+                <div class="team-header">
+                    <img src="${team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
+                         alt="${team.name || 'Team'} logo" 
+                         class="team-logo">
+                    <h3>${team.name || 'Unknown Team'}</h3>
                 </div>
-                <div class="stat-row">
-                    <span>PPG:</span>
-                    <span>${team.team.statistics?.points?.avg || '0.0'}</span>
+                <div class="team-info">
+                    <div class="info-row">Location: ${team.location || 'N/A'}</div>
+                    <div class="info-row">Division: ${team.division?.name || 'N/A'}</div>
+                    <div class="info-row">Conference: ${team.conference?.name || 'N/A'}</div>
                 </div>
-                <div class="stat-row">
-                    <span>PAPG:</span>
-                    <span>${team.team.statistics?.pointsAgainst?.avg || '0.0'}</span>
-                </div>
-                <div class="stat-row">
-                    <span>Streak:</span>
-                    <span>${team.team.streak || 'N/A'}</span>
-                </div>
-            </div>
-            <a href="teams.html?id=${team.team.id}" class="team-link">View Details</a>
-        `;
-        return element;
+            `;
+            return element;
+        } catch (error) {
+            console.error('Error creating team element:', error, teamData);
+            return null;
+        }
     }
 
     createPlayerElement(player) {
@@ -165,7 +444,7 @@ class DashboardManager {
         try {
             const insights = await this.getInsights();
             clearElement(this.containers.insights);
-            
+
             insights.forEach(insight => {
                 const insightElement = createElement('div', 'insight-card');
                 insightElement.innerHTML = `
@@ -209,42 +488,42 @@ class DashboardManager {
 
     getTopMatchupDescription(games) {
         const topGame = games[0]; // Assume first game is top matchup
-        return topGame ? 
-            `${topGame.homeTeam.name} vs ${topGame.awayTeam.name}` : 
+        return topGame ?
+            `${topGame.homeTeam.name} vs ${topGame.awayTeam.name}` :
             'No upcoming games';
     }
 
     getTopMatchupValue(games) {
         const topGame = games[0];
-        return topGame ? 
-            formatters.dateTime(topGame.startTime) : 
+        return topGame ?
+            formatters.dateTime(topGame.startTime) :
             'N/A';
     }
 
     getBestBettingDescription(games) {
         const bestBet = games.find(game => game.spread && game.overUnder);
-        return bestBet ? 
-            `${bestBet.homeTeam.name} (${bestBet.spread})` : 
+        return bestBet ?
+            `${bestBet.homeTeam.name} (${bestBet.spread})` :
             'No betting lines available';
     }
 
     getBestBettingValue(games) {
         const bestBet = games.find(game => game.spread && game.overUnder);
-        return bestBet ? 
-            `O/U ${bestBet.overUnder}` : 
+        return bestBet ?
+            `O/U ${bestBet.overUnder}` :
             'N/A';
     }
 
     getFantasyTrendDescription(teams) {
         // Simplified trend analysis
-        return teams.length > 0 ? 
-            `Top performing team: ${teams[0].team.name}` : 
+        return teams.length > 0 ?
+            `Top performing team: ${teams[0].team.name}` :
             'No trend data available';
     }
 
     getFantasyTrendValue(teams) {
-        return teams.length > 0 ? 
-            `${teams[0].team.statistics?.points?.avg || 0} PPG` : 
+        return teams.length > 0 ?
+            `${teams[0].team.statistics?.points?.avg || 0} PPG` :
             'N/A';
     }
 }

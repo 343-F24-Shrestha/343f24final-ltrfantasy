@@ -2,8 +2,8 @@
 
 // Import core dependencies
 import CONFIG from './config.js';
-import { validateApiResponse, formatters, calculators } from './utils.js';
 import { StorageWrapper } from './storage.js';
+import { validateApiResponse, formatters } from './utils.js';
 
 class NFLDataService {
     constructor() {
@@ -16,15 +16,31 @@ class NFLDataService {
         this.rateLimit = {
             requests: 0,
             lastReset: Date.now(),
-            maxRequests: CONFIG.API.RATE_LIMIT,
-            resetInterval: CONFIG.API.RATE_INTERVAL,
-            queueDelay: 250 // ms between requests
+            maxRequests: 20,
+            resetInterval: 30000,
+            queueDelay: 500 // ms between requests
         };
 
         // Add new properties for feature management
         this.activeSubscriptions = new Map();
         this.liveGameData = new Map();
         this.lastUpdate = null;
+    }
+
+    async fetchWithRetry(url, options = {}) {
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (attempts < maxAttempts) {
+            try {
+                const response = await this.fetchWithCache(url, options);
+                return response;
+            } catch (error) {
+                attempts++;
+                if (attempts === maxAttempts) throw error;
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            }
+        }
     }
 
     // New method for managing live data subscriptions
@@ -114,6 +130,27 @@ class NFLDataService {
         }
     }
 
+    // async throttleRequest() {
+    //     const now = Date.now();
+    //     if (now - this.rateLimit.lastReset > this.rateLimit.resetInterval) {
+    //         this.rateLimit.requests = 0;
+    //         this.rateLimit.lastReset = now;
+    //         console.log("Rate limit reset");
+    //     }
+
+    //     if (this.rateLimit.requests >= this.rateLimit.maxRequests) {
+    //         const waitTime = this.rateLimit.resetInterval - (now - this.rateLimit.lastReset);
+    //         console.log(`Rate limit reached, waiting ${waitTime}ms`);
+    //         await new Promise(resolve => setTimeout(resolve, waitTime));
+    //         return this.throttleRequest();
+    //     }
+
+    //     // Add slightly longer delay between requests to be more respectful to the API
+    //     await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between requests
+    //     this.rateLimit.requests++;
+    //     return true;
+    // }
+
     async throttleRequest() {
         const now = Date.now();
         if (now - this.rateLimit.lastReset > this.rateLimit.resetInterval) {
@@ -123,24 +160,258 @@ class NFLDataService {
         }
 
         if (this.rateLimit.requests >= this.rateLimit.maxRequests) {
-            const waitTime = this.rateLimit.resetInterval - (now - this.rateLimit.lastReset);
-            console.log(`Rate limit reached, waiting ${waitTime}ms`);
+            const waitTime = this.rateLimit.resetInterval;
+            console.log(`Rate limit reached, waiting ${waitTime / 1000} seconds...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
-            return this.throttleRequest();
+            this.rateLimit.requests = 0;
+            this.rateLimit.lastReset = Date.now();
+            return true;
         }
 
-        // Add slightly longer delay between requests to be more respectful to the API
-        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between requests
+        // Add longer delay between requests
+        await new Promise(resolve => setTimeout(resolve, this.rateLimit.queueDelay));
         this.rateLimit.requests++;
         return true;
     }
 
     // Functions for gathering current reference IDs for players, teams, games.
 
-    async getAllTeams() {
-        const teams = await this.fetchWithCache(`${this.baseUrls.site}/teams`);
-        return teams?.sports?.[0]?.leagues?.[0]?.teams || [];
+    // async getAllTeams() {
+    //     const teams = await this.fetchWithCache(`${this.baseUrls.site}/teams`);
+    //     return teams?.sports?.[0]?.leagues?.[0]?.teams || [];
+    // }
+
+    // Making this WAYYY more robust for no reason
+
+    // async getAllTeams() {
+    //     try {
+    //         console.log('Fetching teams...');
+    //         const cacheKey = 'nfl_teams';
+    //         const cachedTeams = this.cache.get(cacheKey);
+            
+    //         if (cachedTeams) {
+    //             console.log('Using cached teams data');
+    //             return cachedTeams;
+    //         }
+    
+    //         const response = await this.fetchWithCache(`${this.baseUrls.site}/teams`);
+    //         console.log('Raw teams response:', response);
+    
+    //         if (!response?.sports?.[0]?.leagues?.[0]?.teams) {
+    //             throw new Error('Invalid teams data structure');
+    //         }
+    
+    //         const teams = response.sports[0].leagues[0].teams;
+    //         console.log(`Found ${teams.length} teams`);
+    
+    //         // Cache for 24 hours
+    //         this.cache.set(cacheKey, teams, 86400);
+            
+    //         return teams;
+    //     } catch (error) {
+    //         console.error('Error fetching teams:', error);
+    //         // Return empty array instead of throwing
+    //         return [];
+    //     }
+    // }
+
+    async getAllTeams(forceRefresh = false) {
+        const cacheKey = 'all_teams';
+        
+        try {
+            // Check cache first unless force refresh
+            if (!forceRefresh) {
+                const cachedTeams = this.cache.get(cacheKey);
+                if (cachedTeams) {
+                    console.log('Using cached teams data');
+                    return cachedTeams;
+                }
+            }
+
+            console.log('Fetching fresh teams data');
+            const response = await fetch(`${this.baseUrls.site}/teams`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            if (!data?.sports?.[0]?.leagues?.[0]?.teams) {
+                throw new Error('Invalid teams data structure');
+            }
+
+            const teams = data.sports[0].leagues[0].teams;
+            console.log(`Retrieved ${teams.length} teams`);
+
+            // Cache for 24 hours
+            this.cache.set(cacheKey, teams, 86400);
+            
+            return teams;
+        } catch (error) {
+            console.error('Error fetching teams:', error);
+            return [];
+        }
     }
+
+    async getTeamRoster(teamId) {
+        const cacheKey = `team_roster_${teamId}`;
+        try {
+            // Check cache first
+            const cachedRoster = this.cache.get(cacheKey);
+            if (cachedRoster) {
+                return cachedRoster;
+            }
+
+            await this.throttleRequest();
+            const response = await fetch(
+                `${this.baseUrls.site}/teams/${teamId}/roster?enable=roster,stats`
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            this.cache.set(cacheKey, data, 86400); // Cache for 24 hours
+            return data;
+        } catch (error) {
+            console.error(`Error fetching roster for team ${teamId}:`, error);
+            return null;
+        }
+    }
+
+
+
+    // async getAllActivePlayers() {
+    //     try {
+    //         const teams = await this.getAllTeams();
+    //         if (!teams?.length) {
+    //             throw new Error("No teams retrieved");
+    //         }
+    //         let allPlayers = [];
+    //         let processedTeams = 0;
+    //         let failedTeams = 0;
+
+    //         for (const teamData of teams) {
+    //             try {
+    //                 // Use the correct endpoint with proper parameters
+    //                 const rosterData = await this.fetchWithCache(
+    //                     `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
+    //                 );
+
+    //                 if (!this.validateRosterResponse(rosterData)) {
+    //                     console.warn(`Invalid roster data for team ${teamData.team.name}`);
+    //                     failedTeams++;
+    //                     continue;
+    //                 }
+
+    //                 if (rosterData?.athletes) {
+    //                     // The roster data is organized by position groups (offense, defense, specialTeam)
+    //                     const allPositionGroups = ['offense', 'defense', 'specialTeam'];
+
+    //                     allPositionGroups.forEach(group => {
+    //                         if (rosterData.athletes.find(g => g.position === group)) {
+    //                             const positionGroup = rosterData.athletes.find(g => g.position === group);
+    //                             const activePlayers = positionGroup.items
+    //                                 .filter(player => player.status?.type === 'active')
+    //                                 .map(player => ({
+    //                                     id: player.id,
+    //                                     fullName: player.fullName,
+    //                                     position: player.position?.abbreviation,
+    //                                     team: teamData.team.name,
+    //                                     jersey: player.jersey,
+    //                                     experience: player.experience,
+    //                                     college: player.college?.name
+    //                                 }));
+    //                             allPlayers = [...allPlayers, ...activePlayers];
+    //                         }
+    //                     });
+    //                 }
+
+    //                 processedTeams++;
+    //                 console.log(`Successfully processed ${teamData.team.name}: ${allPlayers.length} total active players`);
+    //             } catch (error) {
+    //                 failedTeams++;
+    //                 console.error(`Error processing team ${teamData.team.name}:`, error.message);
+    //                 continue;
+    //             }
+    //         }
+
+    //         console.log(`Processed ${processedTeams} teams successfully, ${failedTeams} failed`);
+    //         return allPlayers;
+    //     } catch (error) {
+    //         console.error("Error in getAllActivePlayers:", error);
+    //         throw error; // Rethrow to ensure test catches it
+    //     }
+    // }
+
+    // Modified getAllActivePlayers to fetch data in smaller batches
+
+    // async getAllActivePlayers() {
+    //     try {
+    //         const teams = await this.getAllTeams();
+    //         if (!teams?.length) {
+    //             throw new Error("No teams retrieved");
+    //         }
+    //         let allPlayers = [];
+    //         let processedTeams = 0;
+    //         let failedTeams = 0;
+
+    //         // Process teams in smaller batches
+    //         const BATCH_SIZE = 8;
+    //         for (let i = 0; i < teams.length; i += BATCH_SIZE) {
+    //             const teamBatch = teams.slice(i, i + BATCH_SIZE);
+
+    //             // Process batch sequentially
+    //             for (const teamData of teamBatch) {
+    //                 try {
+    //                     await this.throttleRequest(); // Ensure we respect rate limits
+    //                     const rosterData = await this.fetchWithCache(
+    //                         `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`,
+    //                         3600 // Cache for 1 hour
+    //                     );
+
+    //                     if (!this.validateRosterResponse(rosterData)) {
+    //                         console.warn(`Invalid roster data for team ${teamData.team.name}`);
+    //                         failedTeams++;
+    //                         continue;
+    //                     }
+
+    //                     if (rosterData?.athletes) {
+    //                         const activePlayers = this.processRosterData(rosterData, teamData);
+    //                         allPlayers = [...allPlayers, ...activePlayers];
+    //                     }
+
+    //                     processedTeams++;
+    //                     console.log(`Successfully processed ${teamData.team.name}: ${allPlayers.length} total active players`);
+
+    //                     // Add additional delay between teams
+    //                     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    //                 } catch (error) {
+    //                     failedTeams++;
+    //                     console.error(`Error processing team ${teamData.team.name}:`, error.message);
+    //                     continue;
+    //                 }
+    //             }
+
+    //             // Add delay between batches
+    //             if (i + BATCH_SIZE < teams.length) {
+    //                 console.log(`Waiting between batches...`);
+    //                 await new Promise(resolve => setTimeout(resolve, 5000));
+    //             }
+    //         }
+
+    //         console.log(`Processed ${processedTeams} teams successfully, ${failedTeams} failed`);
+    //         return allPlayers;
+    //     } catch (error) {
+    //         console.error("Error in getAllActivePlayers:", error);
+    //         throw error;
+    //     }
+    // }
+
+    // Sike we re doing this AGAIN
 
     async getAllActivePlayers() {
         try {
@@ -149,60 +420,79 @@ class NFLDataService {
                 throw new Error("No teams retrieved");
             }
             let allPlayers = [];
-            let processedTeams = 0;
-            let failedTeams = 0;
-
-            for (const teamData of teams) {
-                try {
-                    // Use the correct endpoint with proper parameters
-                    const rosterData = await this.fetchWithCache(
-                        `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
-                    );
-
-                    if (!this.validateRosterResponse(rosterData)) {
-                        console.warn(`Invalid roster data for team ${teamData.team.name}`);
-                        failedTeams++;
-                        continue;
+            
+            // Process only 8 teams at a time to avoid rate limits
+            const BATCH_SIZE = 8;
+            for (let i = 0; i < teams.length; i += BATCH_SIZE) {
+                const teamBatch = teams.slice(i, i + BATCH_SIZE);
+                
+                const batchPromises = teamBatch.map(async (teamData) => {
+                    try {
+                        // Check cache first with a unique key
+                        const cacheKey = `roster_${teamData.team.id}`;
+                        const cachedRoster = this.cache.get(cacheKey);
+                        
+                        if (cachedRoster) {
+                            console.log(`Using cached roster for ${teamData.team.name}`);
+                            return cachedRoster;
+                        }
+    
+                        await this.throttleRequest();
+                        const rosterData = await this.fetchWithCache(
+                            `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
+                        );
+    
+                        if (rosterData?.athletes) {
+                            const activePlayers = this.processRosterData(rosterData, teamData);
+                            this.cache.set(cacheKey, activePlayers, 86400); // Cache for 24 hours
+                            return activePlayers;
+                        }
+                    } catch (error) {
+                        console.warn(`Error processing team ${teamData.team.name}:`, error.message);
+                        return [];
                     }
-
-                    if (rosterData?.athletes) {
-                        // The roster data is organized by position groups (offense, defense, specialTeam)
-                        const allPositionGroups = ['offense', 'defense', 'specialTeam'];
-
-                        allPositionGroups.forEach(group => {
-                            if (rosterData.athletes.find(g => g.position === group)) {
-                                const positionGroup = rosterData.athletes.find(g => g.position === group);
-                                const activePlayers = positionGroup.items
-                                    .filter(player => player.status?.type === 'active')
-                                    .map(player => ({
-                                        id: player.id,
-                                        fullName: player.fullName,
-                                        position: player.position?.abbreviation,
-                                        team: teamData.team.name,
-                                        jersey: player.jersey,
-                                        experience: player.experience,
-                                        college: player.college?.name
-                                    }));
-                                allPlayers = [...allPlayers, ...activePlayers];
-                            }
-                        });
-                    }
-
-                    processedTeams++;
-                    console.log(`Successfully processed ${teamData.team.name}: ${allPlayers.length} total active players`);
-                } catch (error) {
-                    failedTeams++;
-                    console.error(`Error processing team ${teamData.team.name}:`, error.message);
-                    continue;
+                });
+    
+                // Wait between batches
+                const batchResults = await Promise.all(batchPromises);
+                allPlayers = [...allPlayers, ...batchResults.flat()];
+                
+                if (i + BATCH_SIZE < teams.length) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                 }
             }
-
-            console.log(`Processed ${processedTeams} teams successfully, ${failedTeams} failed`);
+    
             return allPlayers;
         } catch (error) {
             console.error("Error in getAllActivePlayers:", error);
-            throw error; // Rethrow to ensure test catches it
+            return []; // Return empty array instead of throwing
         }
+    }
+
+    // Helper method to process roster data
+    processRosterData(rosterData, teamData) {
+        const allPositionGroups = ['offense', 'defense', 'specialTeam'];
+        let players = [];
+
+        allPositionGroups.forEach(group => {
+            const positionGroup = rosterData.athletes.find(g => g.position === group);
+            if (positionGroup) {
+                const activePlayers = positionGroup.items
+                    .filter(player => player.status?.type === 'active')
+                    .map(player => ({
+                        id: player.id,
+                        fullName: player.fullName,
+                        position: player.position?.abbreviation,
+                        team: teamData.team.name,
+                        jersey: player.jersey,
+                        experience: player.experience,
+                        college: player.college?.name
+                    }));
+                players = [...players, ...activePlayers];
+            }
+        });
+
+        return players;
     }
 
     async getCurrentWeekGames() {
@@ -308,25 +598,37 @@ class NFLDataService {
     async fetchWithCache(url, expireSeconds = 3600, retries = 3) {
         // Set different cache times based on URL content
         if (expireSeconds === null) {
+            // Yeah we're making this a LOT longer haha
             if (url.includes('roster')) {
-                expireSeconds = 3600; // 1 hour for roster data
+                expireSeconds = 86400; // 24 hours for roster data
             } else if (url.includes('statistics')) {
-                expireSeconds = 1800; // 30 minutes for stats
+                expireSeconds = 3600; // 1 hour for stats
             } else if (url.includes('odds') || url.includes('scores')) {
                 expireSeconds = 300; // 5 minutes for live data
             } else {
                 expireSeconds = 3600; // Default 1 hour
             }
         }
+
+        // Check cache first
+        const cachedData = this.cache.get(url);
+        if (cachedData) {
+            console.log(`Cache hit for ${url}`);
+            return cachedData;
+        }
+        console.log(`Cache miss for ${url}`);
+
         for (let i = 0; i < retries; i++) {                    // Retry loop
             try {
                 await this.throttleRequest();                   // Rate limiting
 
+                // We do this once above, if this code executes method returns
+
                 // Works in both Node and browser
-                const cachedData = this.cache.get(url);        // Check cache first
-                if (cachedData) {
-                    return cachedData;
-                }
+                // const cachedData = this.cache.get(url);        // Check cache first
+                // if (cachedData) {
+                //     return cachedData;
+                // }
 
                 const response = await fetch(url);              // Make API request
                 if (!response.ok) {
@@ -343,8 +645,9 @@ class NFLDataService {
                     throw new Error(`ESPN API error: ${data.error.message || JSON.stringify(data.error)}`);
                 }
 
-                // Works in both Node and browser
+                // Store in cache. Works in both Node and browser
                 this.cache.set(url, data, expireSeconds);      // Store in cache
+                console.log(`Cached data for ${url} (expires in ${expireSeconds}s)`);
 
                 return data;
 
@@ -935,11 +1238,11 @@ class NFLDataService {
         const predictions = await this.getPredictionInsights(gameId);
         const timeRemaining = this.calculateRemainingTime(liveData);
         const scoreDiff = liveData.score.home - liveData.score.away;
-    
+
         return {
             ...predictions,
             adjustedSpread: this.adjustSpreadForLiveGame(predictions.spread, scoreDiff, timeRemaining),
-            adjustedTotal: this.adjustTotalForLiveGame(predictions.totalScore, 
+            adjustedTotal: this.adjustTotalForLiveGame(predictions.totalScore,
                 liveData.score.home + liveData.score.away, timeRemaining)
         };
     }
