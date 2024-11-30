@@ -2,24 +2,45 @@
 body {
     font-family: Arial, sans-serif;
     margin: 0;
+    background: url('fieldBackground.png') no-repeat center center fixed; /* Add the background image */
+    background-size: cover; /* Ensure the image covers the entire background */
+    color: #000000; /* Black font */
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center content horizontally */
+    min-height: 100vh; /* Ensure the body takes up the full viewport height */
+    padding-top: 120px; /* Combined height of the header and menu */
 }
 
 /* Styling for the header title */
 body h1 {
     text-align: center;
-    background-color: #9900ff;
-    color: #fff;
+    background-color: #450084; /* Purple header */
+    color: #FFFFFF; /* White text */
     padding: 15px;
     margin: 0;
+    width: 100%; /* Full width */
+    position: fixed; /* Fix the header at the top */
+    top: 0; /* Align it to the top */
+    z-index: 1000; /* Ensure it stays above other elements */
 }
 
 /* Styling for the menu container */
 .menu {
     display: flex;
     justify-content: space-around;
-    background-color: #e0e0e0;
+    background-color: #450084; /* Purple menu background */
     padding: 10px 0;
     text-align: center;
+    width: 100%; /* Full width */
+    position: fixed; /* Fix the menu below the header */
+    top: 60px; /* Position it below the header */
+    z-index: 999; /* Ensure it stays above other elements but below the header */
+}
+
+/* Add space below the fixed menu to prevent content overlap */
+.content {
+    margin-top: 120px; /* Space equal to the combined height of the header and menu */
 }
 
 /* Styling for each menu button */
@@ -27,22 +48,24 @@ body h1 {
     flex: 1;
     padding: 15px;
     text-decoration: none;
-    color: #333;
+    color: #000000; /* Black text */
     font-weight: bold;
-    background-color: #ddd;
-    border: 1px solid #bbb;
+    background-color: #E6D4A4; /* Gold background for buttons */
+    border: 1px solid #B59D66; /* Gold border */
 }
 
 /* Highlight for the current page button */
 .menu .current {
-    background-color: #9900ff;
-    color: #fff;
+    background-color: #450084; /* Purple highlight */
+    color: #FFFFFF; /* White text */
+    border-bottom: 3px solid #B59D66; /* Gold underline */
 }
 
 /* Layout for entry section (teams and players) */
 .entry-section {
     display: flex;
     align-items: center;
+    justify-content: center;
     margin: 20px 0;
 }
 
@@ -60,6 +83,7 @@ body h1 {
     margin-top: 10px;
     margin-bottom: 0;
     width: 100px;
+    color: #450084; /* Purple text for captions */
 }
 
 /* Styling for entry stats table */
@@ -73,7 +97,7 @@ body h1 {
 .entry-stats td {
     padding: 8px;
     font-size: 0.9em;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #DDD; /* Light gray for table lines */
 }
 
 /* Set equal widths for all cells */
@@ -90,28 +114,58 @@ body h1 {
     text-align: right;
 }
 
+/* Center content on a white "card" */
+.main-content {
+    background-color: #FFFFFF; /* White background for content */
+    padding: 20px;
+    border-radius: 10px; /* Optional: Rounded corners */
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* Optional: Subtle shadow for better visibility */
+    max-width: 80%; /* Constrain the content width */
+    margin: 20px auto; /* Center the content horizontally */
+}
+
+/* Styling for content section headers inside a golden box */
+.main-content h2 {
+    text-align: center; /* Center the text */
+    margin: 20px auto; /* Add vertical spacing */
+    color: #450084; /* Purple text */
+    font-size: 1.5em; /* Slightly smaller font size */
+    padding: 10px; /* Optional: Add padding */
+    background-color: #E6D4A4; /* Gold background for the header */
+    border-radius: 5px; /* Optional: Rounded corners */
+    max-width: 98%; /* Align with the main content width */
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2); /* Optional: Add subtle shadow */
+}
+
 /* Media query for small screens */
 @media (max-width: 600px) {
-    /* Switch layout for small screens */
+    body {
+        padding-top: 300px; /* Increased padding for stacked menu and header */
+    }
+
     .menu {
-        flex-direction: column;
+        flex-direction: column; /* Stack the menu buttons */
     }
 
     .menu a {
         border-top: none;
-        border-bottom: 1px solid #bbb;
+        border-bottom: 1px solid #B59D66; /* Gold border for small screen buttons */
     }
 
     .menu a:last-child {
         border-bottom: none;
     }
 
-    /* Adjust entry section layout for small screens */
     .entry-section {
         flex-direction: column;
         align-items: center;
     }
-
+    
+    .entry-logo {
+        margin-right: 0; /* Remove the right margin to center the icon */
+        margin-bottom: 10px; /* Add spacing below the icon */
+    }
+    
     .entry-stats {
         width: auto;
         margin-left: 0;
