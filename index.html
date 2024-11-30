@@ -12,17 +12,17 @@
 <body>
     <header>
         <h1>LTR FANTASY</h1>
-        <nav class="menu" role="navigation">
-            <a href="index.html" class="current" aria-current="page">Home</a>
+        <nav class="menu">
+            <a href="index.html" class="current">Home</a>
             <a href="teams.html">Teams</a>
             <a href="players.html">Players</a>
             <a href="lineups.html">Lineups</a>
         </nav>
     </header>
 
-    <main class="main-content">
+    <main role="main" class="main-content">
         <!-- Live Games Section -->
-        <section class="live-games" aria-label="Live Games">
+        <section class="section live-games" aria-label="Live Games">
             <h2>Live Games</h2>
             <div id="live-games-container" class="games-grid">
                 <!-- Dynamically populated by JavaScript -->
@@ -30,7 +30,7 @@
         </section>
 
         <!-- Top Teams Section -->
-        <section class="top-teams" aria-label="Top Teams">
+        <section class="section top-teams" aria-label="Top Teams">
             <h2>Top Teams</h2>
             <div class="teams-grid">
                 <!-- Dynamically populated by JavaScript -->
@@ -38,7 +38,7 @@
         </section>
 
         <!-- Top Players Section -->
-        <section class="top-players" aria-label="Top Players">
+        <section class="section top-players" aria-label="Top Players">
             <h2>Top Players</h2>
             <div class="players-grid">
                 <!-- Dynamically populated by JavaScript -->
@@ -46,7 +46,7 @@
         </section>
 
         <!-- Fantasy Insights Section -->
-        <section class="fantasy-insights" aria-label="Fantasy Insights">
+        <section class="section fantasy-insights" aria-label="Fantasy Insights">
             <h2>Fantasy Insights</h2>
             <div id="insights-container" class="insights-grid">
                 <!-- Dynamically populated by JavaScript -->
@@ -54,7 +54,7 @@
         </section>
 
         <!-- Betting Trends Section -->
-        <section class="betting-trends" aria-label="Betting Trends">
+        <section class="section betting-trends" aria-label="Betting Trends">
             <h2>Betting Trends</h2>
             <div id="trends-container" class="trends-grid">
                 <!-- Dynamically populated by JavaScript -->
@@ -72,11 +72,6 @@
     </div>
 
     <!-- Scripts -->
-    <script src="scripts/config.js"></script>
-    <script src="scripts/api.js"></script>
-    <script src="scripts/utils.js"></script>
-    <script src="scripts/storage.js"></script>
-    <script src="scripts/ui.js"></script>
-    <script src="scripts/main.js"></script>
+    <script type="module" src="scripts/main.js"></script>
 </body>
 </html>
