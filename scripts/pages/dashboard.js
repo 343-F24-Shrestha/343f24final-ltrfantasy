@@ -483,9 +483,13 @@ class DashboardManager {
 
     createPlayerElement(player) {
         const element = createElement('div', 'player-card');
+        
+        // Use the correct endpoint for player headshots
+        const playerHeadshot = player.headshot || `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.id}.png&h=150&w=150&scale=crop`;
+        
         element.innerHTML = `
             <div class="player-header">
-                <img src="${player.headshot?.href || 'images/genericProfilePic.jpg'}" 
+                <img src="${playerHeadshot}" 
                      alt="${player.fullName}" 
                      class="player-image">
                 <h3>${player.fullName}</h3>
@@ -501,7 +505,7 @@ class DashboardManager {
                 </div>
                 <div class="info-row">
                     <span>Fantasy Pts:</span>
-                    <span>${player.statistics?.fantasyPoints?.value || '0.0'}</span>
+                    <span>${player.fantasyPoints?.toFixed(1) || '0.0'}</span>
                 </div>
                 <div class="info-row">
                     <span>Status:</span>
@@ -512,6 +516,7 @@ class DashboardManager {
         `;
         return element;
     }
+    
 
     async updateInsights() {
         try {

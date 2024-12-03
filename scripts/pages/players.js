@@ -137,9 +137,12 @@ class PlayersManager {
     createPlayerCard(player) {
         const card = createElement('div', 'player-card');
         
+        // Use the correct endpoint for player headshots
+        const playerHeadshot = player.headshot || `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.id}.png&h=150&w=150&scale=crop`;
+
         card.innerHTML = `
             <div class="player-header">
-                <img src="${player.headshot || 'images/genericProfilePic.jpg'}" 
+                <img src="${playerHeadshot || 'images/genericProfilePic.jpg'}" 
                      alt="${player.fullName}" 
                      class="player-image">
                 <h3>${player.fullName}</h3>
