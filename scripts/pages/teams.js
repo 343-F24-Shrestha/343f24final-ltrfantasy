@@ -13,12 +13,25 @@ class TeamsManager {
             conference: 'ALL',
             search: ''
         };
-        this.init();
+        // this.init(); let main.js do this.
     }
 
     async init() {
         this.setupEventListeners();
         await this.loadTeams();
+    }
+
+    cleanup() {
+        // Similar to players.js
+        ['conference-filter', 'division-filter', 'sort-options'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.replaceWith(element.cloneNode(true));
+            }
+        });
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
     }
 
     setupEventListeners() {
@@ -208,10 +221,5 @@ class TeamsManager {
         window.location.href = `teamCard.html?id=${teamId}`;
     }
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    window.teamsManager = new TeamsManager();
-});
 
 export default TeamsManager;

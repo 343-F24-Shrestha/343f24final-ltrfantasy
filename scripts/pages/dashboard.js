@@ -1,10 +1,11 @@
 // pages/dashboard.js  (my code is a mess i know lol have fun reading this)
 import NFLDataService from '../core/api.js';
 import StorageManager from '../core/storage.js';
-import { formatters, createElement, clearElement, handleError, sortBy, showLoading, hideLoading, updateFooter } from '../core/utils.js';
+import { formatters, createElement, clearElement, handleError, sortBy, showLoading, hideLoading, updateFooter, DebugLogger } from '../core/utils.js';
 
 class DashboardManager {
     constructor() {
+        DebugLogger.log('Init', 'DashboardManager initialized');
         this.api = new NFLDataService();
         this.storage = new StorageManager();
         this.containers = {
@@ -28,20 +29,40 @@ class DashboardManager {
 
     async init() {
         try {
+            DebugLogger.log('Loading', 'Starting dashboard initialization');
             showLoading();
+            const teams = await this.api.getAllTeams();
+            DebugLogger.log('API', 'Teams data received', teams);
             // for now lets just try JUST the teams cuz the api sucks rn
-            await this.updateTopTeams();
+            if (teams?.length) {
+                //await this.updateTopTeams();
+                await this.loadAllSections();
+                DebugLogger.log('UI', 'Teams display updated');
+            }
             //await this.loadAllSections();
-            this.loadAdditionalData();  // Then maayybbeee we load more stuff
+            //this.loadAdditionalData();  // Then maayybbeee we load more stuff
             // theres no way we have enough api bandwidth for this yet
             // this.startUpdateIntervals();
             updateFooter('Dashboard initialized successfully');
         } catch (error) {
             console.error('Dashboard initialization error:', error);
             updateFooter('Error loading dashboard');
+            DebugLogger.log('Error', 'Dashboard initialization failed', error);
         } finally {
             hideLoading();
         }
+    }
+
+    cleanup() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+        // Clear any event listeners
+        Object.values(this.containers).forEach(container => {
+            if (container) {
+                container.replaceWith(container.cloneNode(true));
+            }
+        });
     }
 
     async loadAdditionalData() {
@@ -121,8 +142,8 @@ class DashboardManager {
     async updateLiveGames() {
         try {
             console.log('Fetching live games...');
-            const games = await this.api.getLiveGameData();
-            console.log('Received live games:', games);
+            const data = await this.api.getLiveGameData();
+            console.log('Received live games:', data);
 
             if (!this.containers.liveGames) {
                 console.warn('Live games container not found');
@@ -131,16 +152,35 @@ class DashboardManager {
 
             clearElement(this.containers.liveGames);
 
-            if (!games || games.length === 0) {
-                console.log('No live games available');
+            const events = data?.events || [];
+            if (events.length === 0) {
                 this.containers.liveGames.innerHTML = '<div class="no-games">No live games at the moment</div>';
                 return;
             }
 
-            games.forEach(game => {
-                console.log('Creating game element:', game);
-                const gameElement = this.createGameElement(game);
-                this.containers.liveGames.appendChild(gameElement);
+            events.forEach(event => {
+                const { competitions } = event;
+                if (!competitions || !competitions[0]) return;
+
+                const gameData = {
+                    homeTeam: {
+                        name: competitions[0].competitors[0]?.team?.name || 'Unknown Team',
+                        score: competitions[0].competitors[0]?.score || '0',
+                        logo: competitions[0].competitors[0]?.team?.logo || 'images/genericLogo.jpg'
+                    },
+                    awayTeam: {
+                        name: competitions[0].competitors[1]?.team?.name || 'Unknown Team',
+                        score: competitions[0].competitors[1]?.score || '0',
+                        logo: competitions[0].competitors[1]?.team?.logo || 'images/genericLogo.jpg'
+                    },
+                    status: event.status?.type?.detail || 'Unknown Status',
+                    startTime: event.date
+                };
+
+                const gameElement = this.createGameElement(gameData);
+                if (gameElement) {
+                    this.containers.liveGames.appendChild(gameElement);
+                }
             });
 
             console.log('Live games updated successfully');
@@ -316,37 +356,70 @@ class DashboardManager {
 
     // Sike again lolol
 
-    createGameElement(game) {
-        if (!game) return null;
+    // createGameElement(game) {
+    //     if (!game) return null;
 
+    //     const element = createElement('div', 'game-card');
+    //     try {
+    //         element.innerHTML = `
+    //             <div class="teams">
+    //                 <div class="team home">
+    //                     <img src="${game.homeTeam?.logo || 'images/genericLogo.jpg'}" 
+    //                          alt="${game.homeTeam?.name || 'Team'} logo" 
+    //                          class="team-logo">
+    //                     <span>${game.homeTeam?.name || 'Unknown'}: ${game.homeTeam?.score || '0'}</span>
+    //                 </div>
+    //                 <div class="team away">
+    //                     <img src="${game.awayTeam?.logo || 'images/genericLogo.jpg'}" 
+    //                          alt="${game.awayTeam?.name || 'Team'} logo" 
+    //                          class="team-logo">
+    //                     <span>${game.awayTeam?.name || 'Unknown'}: ${game.awayTeam?.score || '0'}</span>
+    //                 </div>
+    //             </div>
+    //             <div class="game-info">
+    //                 <div class="status">${game.status || 'Status unknown'}</div>
+    //                 <div class="odds">Spread: ${game.spread ? game.spread : 'N/A'}</div>
+    //             </div>
+    //         `;
+    //         return element;
+    //     } catch (error) {
+    //         console.warn('Error creating game element:', error);
+    //         element.innerHTML = '<div class="error">Error loading game data</div>';
+    //         return element;
+    //     }
+    // }
+
+    createGameElement(game) {
         const element = createElement('div', 'game-card');
-        try {
-            element.innerHTML = `
-                <div class="teams">
-                    <div class="team home">
-                        <img src="${game.homeTeam?.logo || 'images/genericLogo.jpg'}" 
-                             alt="${game.homeTeam?.name || 'Team'} logo" 
-                             class="team-logo">
-                        <span>${game.homeTeam?.name || 'Unknown'}: ${game.homeTeam?.score || '0'}</span>
-                    </div>
-                    <div class="team away">
-                        <img src="${game.awayTeam?.logo || 'images/genericLogo.jpg'}" 
-                             alt="${game.awayTeam?.name || 'Team'} logo" 
-                             class="team-logo">
-                        <span>${game.awayTeam?.name || 'Unknown'}: ${game.awayTeam?.score || '0'}</span>
+        
+        element.innerHTML = `
+            <div class="game-teams">
+                <div class="team-matchup">
+                    <img src="${game.homeTeam.logo || 'images/genericLogo.jpg'}" 
+                         alt="${game.homeTeam.name} logo" 
+                         class="team-logo">
+                    <div class="team-info">
+                        <span class="team-name">${game.homeTeam.name}</span>
+                        <span class="team-score">${game.homeTeam.score || '0'}</span>
                     </div>
                 </div>
-                <div class="game-info">
-                    <div class="status">${game.status || 'Status unknown'}</div>
-                    <div class="odds">Spread: ${game.spread ? game.spread : 'N/A'}</div>
+                <div class="vs">VS</div>
+                <div class="team-matchup">
+                    <div class="team-info">
+                        <span class="team-name">${game.awayTeam.name}</span>
+                        <span class="team-score">${game.awayTeam.score || '0'}</span>
+                    </div>
+                    <img src="${game.awayTeam.logo || 'images/genericLogo.jpg'}" 
+                         alt="${game.awayTeam.name} logo" 
+                         class="team-logo">
                 </div>
-            `;
-            return element;
-        } catch (error) {
-            console.warn('Error creating game element:', error);
-            element.innerHTML = '<div class="error">Error loading game data</div>';
-            return element;
-        }
+            </div>
+            <div class="game-status">
+                ${game.status || 'Upcoming'} • ${formatters.dateTime(game.startTime)}
+            </div>
+        `;
+    
+        return element;
     }
 
     // createTeamElement(team) {

@@ -1,46 +1,53 @@
 // main.js
-import DashboardManager from './pages/dashboard.js';
-import PlayersManager from './pages/players.js';
-import TeamsManager from './pages/teams.js';
-import LineupManager from './pages/lineups.js';
 import { showLoading, hideLoading, updateFooter } from './core/utils.js';
 
 class App {
     constructor() {
-        this.dashboardManager = new DashboardManager();
-        this.playersManager = new PlayersManager();
-        this.teamsManager = new TeamsManager();
-        this.lineupManager = new LineupManager();
         this.currentPage = document.body.dataset.page;
+        this.activeManager = null;
     }
 
     async init() {
-        showLoading();
-        
         try {
             showLoading();
-            // Cleanup any existing intervals before initializing new page
-            if (this.dashboardManager) this.dashboardManager.cleanup();
-            if (this.playersManager) this.playersManager.cleanup();
-            if (this.teamsManager) this.teamsManager.cleanup();
-            if (this.lineupManager) this.lineupManager.cleanup();
+            
+            // Cleanup previous manager if it exists
+            if (this.activeManager?.cleanup) {
+                this.activeManager.cleanup();
+            }
 
+            // Initialize the appropriate manager based on current page
             switch (this.currentPage) {
                 case 'dashboard':
-                    this.dashboardManager.init();
+                    const { default: DashboardManager } = await import('./pages/dashboard.js');
+                    this.activeManager = new DashboardManager();
+                    await this.activeManager.init();
                     break;
+                    
                 case 'players':
-                    this.playersManager.init();
+                    const { default: PlayersManager } = await import('./pages/players.js');
+                    this.activeManager = new PlayersManager();
+                    await this.activeManager.init();
                     break;
+                    
                 case 'teams':
-                    this.teamsManager.init();
+                    const { default: TeamsManager } = await import('./pages/teams.js');
+                    this.activeManager = new TeamsManager();
+                    await this.activeManager.init();
                     break;
+                    
                 case 'lineups':
-                    this.lineupManager.init();
+                    const { default: LineupManager } = await import('./pages/lineups.js');
+                    this.activeManager = new LineupManager();
+                    await this.activeManager.init();
                     break;
+                    
                 default:
                     console.warn('No matching page found for:', this.currentPage);
             }
+
+            updateFooter(`${this.currentPage} page initialized successfully`);
+
         } catch (error) {
             console.error('Error initializing page:', error);
             updateFooter(`Error initializing page: ${error.message}`);

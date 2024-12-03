@@ -13,12 +13,26 @@ class PlayersManager {
             team: 'ALL',
             search: ''
         };
-        this.init();
+        // this.init(); letting main.js control this
     }
 
     async init() {
         this.setupEventListeners();
         await this.loadPlayers();
+    }
+
+    cleanup() {
+        const searchInput = document.getElementById('player-search');
+        if (searchInput) {
+            searchInput.removeEventListener('input', this.handleSearch);
+        }
+        // Clear any filter event listeners
+        ['position-filter', 'team-filter', 'sort-options'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.replaceWith(element.cloneNode(true));
+            }
+        });
     }
 
     setupEventListeners() {
@@ -207,10 +221,5 @@ class PlayersManager {
         window.location.href = `playerCard.html?id=${playerId}`;
     }
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    window.playersManager = new PlayersManager();
-});
 
 export default PlayersManager;

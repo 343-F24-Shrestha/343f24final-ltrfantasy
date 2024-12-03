@@ -3,7 +3,7 @@
 // Import core dependencies
 import CONFIG from './config.js';
 import { StorageWrapper } from './storage.js';
-import { validateApiResponse, formatters } from './utils.js';
+import { validateApiResponse, formatters, DebugLogger } from './utils.js';
 
 class NFLDataService {
     constructor() {
@@ -25,6 +25,8 @@ class NFLDataService {
         this.activeSubscriptions = new Map();
         this.liveGameData = new Map();
         this.lastUpdate = null;
+        this.currentSeason = new Date().getFullYear();
+        this.fallbackSeason = this.currentSeason - 1;
     }
 
     async fetchWithRetry(url, options = {}) {
@@ -219,6 +221,9 @@ class NFLDataService {
         const cacheKey = 'all_teams';
         
         try {
+            //Debug log
+            DebugLogger.log('API', 'Fetching teams data', { forceRefresh, cacheKey });
+
             // Check cache first unless force refresh
             if (!forceRefresh) {
                 const cachedTeams = this.cache.get(cacheKey);
@@ -230,13 +235,20 @@ class NFLDataService {
 
             console.log('Fetching fresh teams data');
             const response = await fetch(`${this.baseUrls.site}/teams`);
+            //Debug
+            DebugLogger.log('API', 'Teams API response received', { status: response.status });
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
-            
+
+            //Debug
+            DebugLogger.log('API', 'Teams data parsed', { 
+                dataStructure: data?.sports?.[0]?.leagues?.[0]?.teams ? 'valid' : 'invalid' 
+            });
+
             if (!data?.sports?.[0]?.leagues?.[0]?.teams) {
                 throw new Error('Invalid teams data structure');
             }
@@ -249,6 +261,7 @@ class NFLDataService {
             
             return teams;
         } catch (error) {
+            DebugLogger.log('Error', 'Teams fetch failed', error);
             console.error('Error fetching teams:', error);
             return [];
         }
@@ -895,8 +908,15 @@ class NFLDataService {
     // FANTASY DATA FUNCTIONS
 
     async getPlayerProjections(playerId) {
-        const stats = await this.fetchWithCache(
-            `${this.baseUrls.core}/seasons/2024/types/2/athletes/${playerId}/projections`
+        // const stats = await this.fetchWithCache(
+        //     `${this.baseUrls.core}/seasons/2024/types/2/athletes/${playerId}/projections`
+        // );
+
+        // Historical data ok for projections
+        const stats = await this.getSeasonData(
+            `${this.baseUrls.core}/athletes/${playerId}/projections`,
+            'types/2',
+            false
         );
 
         return {
@@ -945,6 +965,38 @@ class NFLDataService {
                 recentDefense: this.extractLastNGames(opponentStats, 3)
             }
         };
+    }
+
+    async getSeasonData(endpoint, params, requireCurrent = false) {
+        try {
+            // Try current season first
+            const currentData = await this.fetchWithCache(
+                `${endpoint}/${this.currentSeason}/${params}`
+            );
+            if (currentData) return currentData;
+
+            // If current season fails and we don't require current data
+            if (!requireCurrent) {
+                console.log(`Falling back to ${this.fallbackSeason} data`);
+                return await this.fetchWithCache(
+                    `${endpoint}/${this.fallbackSeason}/${params}`
+                );
+            }
+            return null;
+        } catch (error) {
+            console.warn('Season data fetch failed:', error);
+            return null;
+        }
+    }
+
+    async getPlayerStats(playerId) {
+        // Use current season for live stats
+        const stats = await this.getSeasonData(
+            `${this.baseUrls.core}/athletes/${playerId}/statistics`,
+            'types/2',
+            true
+        );
+        return stats;
     }
 
     // For moneyline/spread predictions

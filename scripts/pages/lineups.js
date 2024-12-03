@@ -26,7 +26,7 @@ class LineupManager {
             DST: { max: 1, label: 'Defense/Special Teams' }
         };
         this.availablePlayers = [];
-        this.init();
+        // this.init(); let main.js do this
     }
 
     async init() {
@@ -34,6 +34,17 @@ class LineupManager {
         await this.loadAvailablePlayers();
         this.loadSavedLineup();
         this.renderLineup();
+    }
+
+    cleanup() {
+        if (this.saveInterval) {
+            clearInterval(this.saveInterval);
+        }
+        // Remove drag-drop listeners if implemented
+        const lineupContainer = document.getElementById('lineup-container');
+        if (lineupContainer) {
+            lineupContainer.replaceWith(lineupContainer.cloneNode(true));
+        }
     }
 
     setupEventListeners() {
@@ -270,10 +281,5 @@ class LineupManager {
         }
     }
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    window.lineupManager = new LineupManager();
-});
 
 export default LineupManager;

@@ -45,9 +45,9 @@ export const validateApiResponse = (data, type) => {
 //         style: 'currency',
 //         currency: 'USD'
 //     }).format(amount),
-    
+
 //     percentage: (value) => `${(value * 100).toFixed(1)}%`,
-    
+
 //     date: (date) => new Intl.DateTimeFormat('en-US').format(new Date(date))
 // };
 
@@ -83,7 +83,7 @@ export const formatters = {
 //     fantasyPoints: (stats) => {
 //         // Fantasy scoring logic
 //     },
-    
+
 //     winProbability: (teamStats, opponentStats) => {
 //         // Win probability calculation
 //     }
@@ -133,7 +133,7 @@ export const sortBy = (array, key, descending = false) => {
     return [...array].sort((a, b) => {
         const aVal = typeof a[key] === 'string' ? a[key].toLowerCase() : a[key];
         const bVal = typeof b[key] === 'string' ? b[key].toLowerCase() : b[key];
-        
+
         if (aVal < bVal) return descending ? 1 : -1;
         if (aVal > bVal) return descending ? -1 : 1;
         return 0;
@@ -153,15 +153,57 @@ export default {
 export const showLoading = () => {
     document.getElementById('loading-overlay')?.classList.remove('hidden');
     updateFooter('Loading...');
-  };
-  
-  export const hideLoading = () => {
+};
+
+export const hideLoading = () => {
     document.getElementById('loading-overlay')?.classList.add('hidden');
-  };
-  
-  export const updateFooter = (message) => {
+};
+
+export const updateFooter = (message) => {
     const footer = document.getElementById('last-updated');
     if (footer) {
-      footer.textContent = `${message} • ${new Date().toLocaleTimeString()}`;
+        footer.textContent = `${message} • ${new Date().toLocaleTimeString()}`;
     }
-  };
+};
+
+
+// Debug logger utility
+
+export const DebugLogger = {
+    logs: [],
+    maxLogs: 1000,
+
+    log(type, message, data = null) {
+        const entry = {
+            timestamp: new Date().toISOString(),
+            type,
+            message,
+            data: data ? JSON.stringify(data, null, 2) : null
+        };
+        
+        this.logs.push(entry);
+        if (this.logs.length > this.maxLogs) {
+            this.logs.shift();
+        }
+        
+        console.log(`[${type}] ${message}`, data || '');
+    },
+
+    copyToClipboard() {
+        const output = this.logs.map(entry => 
+            `${entry.timestamp} [${entry.type}] ${entry.message}\n${entry.data ? entry.data : ''}`
+        ).join('\n\n');
+        
+        navigator.clipboard.writeText(output)
+            .then(() => console.log('Debug logs copied to clipboard'))
+            .catch(err => console.error('Failed to copy logs:', err));
+    },
+
+    addCopyButton() {
+        const button = document.createElement('button');
+        button.textContent = 'Copy Debug Logs';
+        button.style.cssText = 'position:fixed;bottom:10px;right:10px;z-index:9999';
+        button.onclick = () => this.copyToClipboard();
+        document.body.appendChild(button);
+    }
+};
