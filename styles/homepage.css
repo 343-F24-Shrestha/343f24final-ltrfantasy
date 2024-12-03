@@ -116,30 +116,47 @@ footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
+    width: 100%;
 }
 
-.team-matchup {
+.team-logo {
+    width: 60px;
+    height: auto;
+    object-fit: contain;
+}
+
+.team-info-container {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    text-align: center;
+    flex: 1;
 }
 
 .team-info {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
 }
 
 .team-name {
     font-weight: bold;
-    font-size: 1.1em;
+    font-size: 1em;
     color: var(--primary-color);
 }
 
 .team-score {
     font-size: 1.5em;
     font-weight: bold;
+}
+
+.vs-section {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: var(--text-color);
+    margin: 0 10px;
+    align-self: center;
 }
 
 .game-status {
