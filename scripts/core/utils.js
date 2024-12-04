@@ -129,10 +129,10 @@ export const handleError = (error, context) => {
 };
 
 // Data sorting
-export function sortBy(array, key, descending = false) {
+export function sortBy(array, keyOrFn, descending = false) {
     return array.sort((a, b) => {
-        const aValue = a[key];
-        const bValue = b[key];
+        const aValue = typeof keyOrFn === 'function' ? keyOrFn(a) : a[keyOrFn];
+        const bValue = typeof keyOrFn === 'function' ? keyOrFn(b) : b[keyOrFn];
 
         if (typeof aValue === 'number' && typeof bValue === 'number') {
             return descending ? bValue - aValue : aValue - bValue;
@@ -143,6 +143,7 @@ export function sortBy(array, key, descending = false) {
         }
     });
 }
+
 
 
 

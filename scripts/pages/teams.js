@@ -79,7 +79,6 @@ class TeamsManager {
     async enhanceTeamsWithStats(teams) {
         const currentYear = new Date().getFullYear();
         const seasonType = 2; // Regular season
-    
         // Hardcoded division and conference mapping
         const divisionConferenceMap = {
             "1": { division: "South", conference: "NFC" },
@@ -115,29 +114,53 @@ class TeamsManager {
             "33": { division: "North", conference: "AFC" },
             "34": { division: "South", conference: "AFC" }
         };
+        const upcomingGames = await this.api.getUpcomingGames();
+        upcomingGames.forEach(game => {
+            const homeTeamId = game.homeTeam.id;
+            const awayTeamId = game.awayTeam.id;
+    
+            if (!upcomingGames[homeTeamId]) {
+                upcomingGames[homeTeamId] = game;
+            }
+            if (!upcomingGames[awayTeamId]) {
+                upcomingGames[awayTeamId] = game;
+            }
+        });
     
         return Promise.all(teams.map(async teamData => {
             const team = teamData.team;
+            const teamId = team.id;
     
             try {
-                const teamId = team.id;
-    
-                // Fetch team betting stats and trends as before
-                const [stats, bettingTrends] = await Promise.all([
-                    this.api.getTeamBettingStats(teamId),
-                    this.api.getTeamTrends(teamId),
+                // Fetch team betting stats and ATS data
+                const [stats, atsDataResponse] = await Promise.all([
+                  this.api.getTeamBettingStats(teamId),
+                  fetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2023/types/${seasonType}/teams/${teamId}/ats`),
                 ]);
-    
-                // Fetch the record details from the record endpoint
+          
+                const atsData = await atsDataResponse.json();
+          
+                // Find the overall ATS record
+                const atsOverallItem = atsData?.items?.find(item => item.type?.name === 'atsOverall');
+          
+                // Extract ATS Record
+                const atsWins = atsOverallItem?.wins || 0;
+                const atsLosses = atsOverallItem?.losses || 0;
+                const atsPushes = atsOverallItem?.pushes || 0;
+                console.log('atsWins: ' + atsWins);
+                console.log('atsLosses: ' + atsLosses);
+                console.log('atsPushes: ' + atsPushes);
+
+                // Fetch the record details from the record endpoint (existing code)
                 const recordResponse = await fetch(
                     `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${currentYear}/types/${seasonType}/teams/${teamId}/record`
                 );
                 const recordData = await recordResponse.json();
     
-                // Locate the "overall" record using the "name" field
+                // Locate the "overall" record
                 const overallRecord = recordData.items.find((record) => record.name === 'overall');
     
-                // Extract wins, losses, and ties from stats
+                // Extract wins, losses, and ties
                 const winsStat = overallRecord?.stats.find(stat => stat.name === 'wins');
                 const lossesStat = overallRecord?.stats.find(stat => stat.name === 'losses');
                 const tiesStat = overallRecord?.stats.find(stat => stat.name === 'ties');
@@ -152,24 +175,33 @@ class TeamsManager {
                 // Extract points per game from stats
                 const pointsPerGame = stats?.offense?.pointsPerGame?.value || 0;
     
-                // Get division and conference from the hardcoded map
+                // Get division and conference
                 const division = divisionConferenceMap[teamId]?.division || 'Unknown';
                 const conference = divisionConferenceMap[teamId]?.conference || 'Unknown';
+    
+                // Get the team's upcoming game
+                const upcomingGame = upcomingGames[teamId];
+    
+                // Extract Over/Under value
+                const overUnder = upcomingGame ? upcomingGame.overUnder : null;
     
                 return {
                     ...teamData,
                     team: {
-                        ...team,
-                        wins,
-                        losses,
-                        ties,
-                        division,   // Add division to team object
-                        conference  // Add conference to team object
+                    ...team,
+                    wins,
+                    losses,
+                    ties,
+                    division,
+                    conference,
+                    overUnder,
+                    atsWins,
+                    atsLosses,
+                    atsPushes,
                     },
                     winPercentage,
                     pointsPerGame,
                     stats,
-                    bettingTrends,
                 };
             } catch (error) {
                 console.warn(`Failed to load stats for team ${team.id}`, error);
@@ -182,11 +214,14 @@ class TeamsManager {
                         ties: 0,
                         division: divisionConferenceMap[team.id]?.division || 'Unknown',
                         conference: divisionConferenceMap[team.id]?.conference || 'Unknown',
+                        overUnder: null,
                     },
                     winPercentage: 0,
                     pointsPerGame: 0,
+                    atsWins: 0,
+                    atsLosses: 0,
+                    atsPushes: 0,
                     stats: {},
-                    bettingTrends: {},
                 };
             }
         }));
@@ -216,69 +251,88 @@ class TeamsManager {
         clearElement(container);
     
         const filteredTeams = this.filterTeams();
-        const sortedTeams = sortBy(filteredTeams, sortKey, true);
     
-        sortedTeams.forEach(team => {
+        const sortedTeams = sortBy(
+            filteredTeams,
+            (team) => {
+                switch (sortKey) {
+                    case 'winPercentage':
+                        return team.winPercentage;
+                    case 'pointsPerGame':
+                        return team.pointsPerGame;
+                    case 'atsRecord':
+                        const atsWins = team.team.atsWins || 0;
+                        const atsLosses = team.team.atsLosses || 0;
+                        const atsPushes = team.team.atsPushes || 0;
+                        const atsTotalGames = atsWins + atsLosses + atsPushes;
+                        const atsWinPercentage =
+                            atsTotalGames > 0 ? (atsWins + 0.5 * atsPushes) / atsTotalGames : 0;
+                        return atsWinPercentage;
+                    case 'overUnder':
+                        return team.team.overUnder || 0; // Default to 0 if no Over/Under value
+                    default:
+                        return 0; // Default fallback
+                }
+            },
+            true // Descending order
+        );
+    
+        sortedTeams.forEach((team) => {
             const teamCard = this.createTeamCard(team);
             container.appendChild(teamCard);
         });
     }
     
     
+    
+    
 
     createTeamCard(team) {
         const card = createElement('div', 'team-card');
-        
+      
         card.innerHTML = `
-            <div class="team-header">
-                <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
-                    alt="${team.team.name} logo" 
-                    class="team-logo">
-                <h3>${team.team.name}</h3>
-                <div class="team-record">${this.formatRecord(team)}</div>
+          <div class="team-header">
+            <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
+                 alt="${team.team.name} logo" 
+                 class="team-logo">
+            <h3>${team.team.name}</h3>
+            <div class="team-record">${this.formatRecord(team)}</div>
+          </div>
+          <div class="team-stats">
+            <div class="stat-column">
+              <div class="stat">
+                <label>Division</label>
+                <value>${team.team.conference} ${team.team.division}</value>
+              </div>
+              <div class="stat">
+                <label>Points Per Game</label>
+                <value>${team.pointsPerGame.toFixed(1)}</value>
+              </div>
             </div>
-            <div class="team-stats">
-                <div class="stat-column">
-                    <div class="stat">
-                        <label>Division</label>
-                        <value>${team.team.conference} ${team.team.division}</value>
-                    </div>
-                <div class="stat">
-                    <label>Points Per Game</label>
-                    <value>${team.pointsPerGame.toFixed(1)}</value>
-                </div>
-                    <div class="stat">
-                        <label>Points Allowed</label>
-                        <value>${team.stats?.defense?.pointsAllowed?.value?.toFixed(1) || '0.0'}</value>
-                    </div>
-                </div>
-                <div class="stat-column">
-                    <div class="stat">
-                        <label>ATS Record</label>
-                        <value>${this.formatAtsRecord(team.bettingTrends)}</value>
-                    </div>
-                    <div class="stat">
-                        <label>Over/Under</label>
-                        <value>${this.formatOverUnder(team.bettingTrends)}</value>
-                    </div>
-                </div>
+            <div class="stat-column">
+              <div class="stat">
+                <label>ATS Record</label>
+                <value>${this.formatAtsRecord(team.team)}</value>
+              </div>
+              <div class="stat">
+                <label>Over/Under</label>
+                <value>${team.team.overUnder ? `O/U ${team.team.overUnder}` : 'N/A'}</value>
+              </div>
             </div>
-            <div class="team-trends">
-                <h4>Betting Trends</h4>
-                ${this.renderBettingTrends(team.bettingTrends)}
-            </div>
-            <div class="team-actions">
-                <button onclick="showTeamSchedule(${team.team.id})" class="view-schedule">
-                    View Schedule
-                </button>
-                <button onclick="showTeamDetails(${team.team.id})" class="view-details">
-                    View Details
-                </button>
-            </div>
+          </div>
+          <div class="team-actions">
+            <button onclick="teamsManager.showTeamSchedule(${team.team.id})" class="view-schedule">
+              View Schedule
+            </button>
+            <button onclick="teamsManager.showTeamDetails(${team.team.id})" class="view-details">
+              View Details
+            </button>
+          </div>
         `;
-
+      
         return card;
-    }
+      }
+    
 
     formatRecord(team) {
         const wins = team.team.wins || 0;
@@ -288,11 +342,12 @@ class TeamsManager {
     }
     
 
-    formatAtsRecord(trends) {
-        const wins = trends?.ats?.record?.wins || 0;
-        const losses = trends?.ats?.record?.losses || 0;
-        return `${wins}-${losses} ATS`;
-    }
+    formatAtsRecord(team) {
+        const wins = team.atsWins || 0;
+        const losses = team.atsLosses || 0;
+        const pushes = team.atsPushes || 0;
+        return `${wins}-${losses}${pushes > 0 ? `-${pushes}` : ''} ATS`;
+      }
 
     formatOverUnder(trends) {
         const overs = trends?.overUnder?.overs?.value || 0;
