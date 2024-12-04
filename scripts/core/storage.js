@@ -274,6 +274,14 @@ class StorageManager {
         }
     }
 
+    async saveLineup(lineup) {
+        return this.setCache('current_lineup', lineup);
+    }
+
+    async getLineup() {
+        return this.getCache('current_lineup') || [];
+    }
+
     async getLineups() {
         try {
             const tx = this.db.transaction(this.stores.lineups, 'readonly');

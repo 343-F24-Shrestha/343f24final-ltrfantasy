@@ -28,14 +28,16 @@
             <div id="lineup-container">
                 <!-- Lineup positions will be dynamically populated here -->
             </div>
-            <div class="lineup-actions">
-                <button id="save-lineup">Save Lineup</button>
-                <button id="optimize-lineup">Optimize Lineup</button>
-                <button id="clear-lineup">Clear Lineup</button>
-                <button onclick="lineupManager.exportLineup()">Export Lineup</button>
-                <input type="file" onchange="lineupManager.importLineup(this.files[0])">
-                <button onclick="lineupManager.clearData()">Clear All Data</button>
-            </div>
+            <form class="lineup-form">
+                <input type="text" id="lineup-name" placeholder="Lineup Name" required>
+                <div class="lineup-actions">
+                    <button type="submit" data-action="save">Save Lineup</button>
+                    <button type="button" data-action="clear">Clear Lineup</button>
+                    <button type="button" data-action="export">Export Lineup</button>
+                    <input type="file" data-action="import" accept=".json">
+                    <button type="button" data-action="reset-all">Reset All Data</button>
+                </div>
+            </form>
             <div id="total-projected-points"></div>
         </section>
     </main>
@@ -48,7 +50,7 @@
         <div class="loader"></div>
     </div>
 
-    <script type="module" src="scripts/pages/main.js"></script>
+    <script type="module" src="scripts/main.js"></script>
 </body>
 
 </html>

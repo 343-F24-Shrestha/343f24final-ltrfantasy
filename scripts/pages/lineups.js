@@ -7,16 +7,8 @@ class LineupManager {
     constructor() {
         this.api = new NFLDataService();
         this.storage = new StorageManager();
-        this.currentLineup = {
-            QB: null,
-            RB1: null,
-            RB2: null,
-            WR1: null,
-            WR2: null,
-            TE: null,
-            FLEX: null,
-            DST: null
-        };
+        this.currentLineup = [];
+        this.maxPlayers = 8; // Standard fantasy lineup size
         this.positions = {
             QB: { max: 1, label: 'Quarterback' },
             RB: { max: 2, label: 'Running Back' },
@@ -32,7 +24,53 @@ class LineupManager {
     async init() {
         this.setupEventListeners();
         await this.loadAvailablePlayers();
-        this.loadSavedLineup();
+        await this.loadSavedLineup();
+        this.renderLineup();
+    }
+
+    renderLineup() {
+        const container = document.getElementById('lineup-container');
+        container.innerHTML = this.currentLineup.map(player => `
+            <div class="player-card">
+                <h3>${player.fullName}</h3>
+                <p>${player.position} - ${player.team}</p>
+                <button onclick="lineupManager.removePlayer('${player.id}')">Remove</button>
+            </div>
+        `).join('');
+    }
+
+    addToLineup(playerId) {
+        window.lineupManager.addPlayer(playerId);
+    }
+
+    async addPlayer(playerId) {
+        if (this.currentLineup.length >= this.maxPlayers) {
+            alert('Lineup full');
+            return;
+        }
+    
+        const players = await this.api.getAllActivePlayers();
+        const player = players.find(p => p.id === playerId);
+        
+        if (!player) {
+            console.error('Player not found:', playerId);
+            return;
+        }
+    
+        this.currentLineup.push(player);
+        await this.storage.setCache('current_lineup', this.currentLineup);
+        this.renderLineup();
+    }
+
+    removePlayer(playerId) {
+        this.currentLineup = this.currentLineup.filter(p => p.id !== playerId);
+        this.storage.setCache('current_lineup', this.currentLineup);
+        this.renderLineup();
+    }
+
+    clearLineup() {
+        this.currentLineup = [];
+        this.storage.setCache('current_lineup', []);
         this.renderLineup();
     }
 
@@ -72,25 +110,30 @@ class LineupManager {
     }
 
     setupEventListeners() {
-        // Save lineup button
-        document.getElementById('save-lineup')?.addEventListener('click', () => {
+        document.querySelector('.lineup-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
             this.saveLineup();
         });
-
-        // Optimize lineup button
-        document.getElementById('optimize-lineup')?.addEventListener('click', async () => {
-            await this.optimizeLineup();
+        
+        document.querySelector('[data-action="clear"]')?.addEventListener('click', () => 
+            this.clearLineup());
+        
+        document.querySelector('[data-action="export"]')?.addEventListener('click', () => 
+            this.exportLineup());
+        
+        document.querySelector('[data-action="import"]')?.addEventListener('change', (e) => 
+            this.importLineup(e.target.files[0]));
+            
+        document.querySelector('[data-action="reset-all"]')?.addEventListener('click', () => {
+            if(confirm('Are you sure you want to reset all data?')) {
+                this.clearData();
+            }
         });
 
-        // Clear lineup button
-        document.getElementById('clear-lineup')?.addEventListener('click', () => {
-            this.clearLineup();
-        });
-
-        // Position dropdowns
-        Object.keys(this.currentLineup).forEach(position => {
-            document.getElementById(`${position}-select`)?.addEventListener('change', (e) => {
-                this.updatePosition(position, e.target.value);
+        document.querySelectorAll('.add-player-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const playerId = e.target.dataset.playerId;
+                this.addPlayer(playerId);
             });
         });
     }
@@ -99,7 +142,9 @@ class LineupManager {
         try {
             showLoading();
             const players = await this.api.getAllActivePlayers();
-            this.availablePlayers = await this.enhancePlayersWithProjections(players);
+            console.log('Got the players, enhancing with projections');
+            //this.availablePlayers = await this.enhancePlayersWithProjections(players);
+            //console.log('the projections finished so whats wrong?');
             this.updatePositionDropdowns();
             updateFooter('Available players loaded successfully');
         } catch (error) {
@@ -113,13 +158,14 @@ class LineupManager {
     async enhancePlayersWithProjections(players) {
         return Promise.all(players.map(async player => {
             try {
-                const projections = await this.api.getPlayerProjections(player.id);
+                // Use 2023 season instead of 2024
+                const stats = await this.api.getPlayerFantasyStats(player.id); 
                 return {
                     ...player,
-                    projectedPoints: this.calculateProjectedPoints(projections)
+                    projectedPoints: this.calculateProjectedPoints(stats) // Use actual stats as projection
                 };
             } catch (error) {
-                console.warn(`Failed to load projections for player ${player.id}`, error);
+                console.warn(`Using base player data for ${player.id}`);
                 return player;
             }
         }));
@@ -140,8 +186,8 @@ class LineupManager {
         );
     }
 
-    loadSavedLineup() {
-        const savedLineup = this.storage.getLineup();
+    async loadSavedLineup() {
+        const savedLineup = await this.storage.getCache('current_lineup');
         if (savedLineup) {
             this.currentLineup = savedLineup;
         }
@@ -177,13 +223,13 @@ class LineupManager {
         }
     }
 
-    clearLineup() {
-        this.currentLineup = Object.keys(this.currentLineup).reduce((acc, pos) => {
-            acc[pos] = null;
-            return acc;
-        }, {});
-        this.renderLineup();
-    }
+    // clearLineup() {
+    //     this.currentLineup = Object.keys(this.currentLineup).reduce((acc, pos) => {
+    //         acc[pos] = null;
+    //         return acc;
+    //     }, {});
+    //     this.renderLineup();
+    // }
 
     updatePosition(position, playerId) {
         if (playerId === '') {
@@ -233,21 +279,21 @@ class LineupManager {
         );
     }
 
-    renderLineup() {
-        const container = document.getElementById('lineup-container');
-        if (!container) return;
+    // renderLineup() {
+    //     const container = document.getElementById('lineup-container');
+    //     if (!container) return;
 
-        clearElement(container);
+    //     clearElement(container);
 
-        // Render each position
-        Object.entries(this.positions).forEach(([pos, info]) => {
-            const positionElement = this.createPositionElement(pos, info);
-            container.appendChild(positionElement);
-        });
+    //     // Render each position
+    //     Object.entries(this.positions).forEach(([pos, info]) => {
+    //         const positionElement = this.createPositionElement(pos, info);
+    //         container.appendChild(positionElement);
+    //     });
 
-        // Update total projected points
-        this.updateProjectedPoints();
-    }
+    //     // Update total projected points
+    //     this.updateProjectedPoints();
+    // }
 
     createPositionElement(position, info) {
         const element = createElement('div', 'position-slot');
@@ -305,5 +351,7 @@ class LineupManager {
         }
     }
 }
+
+
 
 export default LineupManager;

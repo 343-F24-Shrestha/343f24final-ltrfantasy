@@ -10,7 +10,7 @@ class App {
     async init() {
         try {
             showLoading();
-            
+
             // Cleanup previous manager if it exists
             if (this.activeManager?.cleanup) {
                 this.activeManager.cleanup();
@@ -23,25 +23,30 @@ class App {
                     this.activeManager = new DashboardManager();
                     await this.activeManager.init();
                     break;
-                    
+
                 case 'players':
                     const { default: PlayersManager } = await import('./pages/players.js');
                     this.activeManager = new PlayersManager();
                     await this.activeManager.init();
                     break;
-                    
+
                 case 'teams':
                     const { default: TeamsManager } = await import('./pages/teams.js');
                     this.activeManager = new TeamsManager();
                     await this.activeManager.init();
                     break;
-                    
+
                 case 'lineups':
+                    // const { default: LineupManager } = await import('./pages/lineups.js');
+                    // this.activeManager = new LineupManager();
+                    // await this.activeManager.init();
+                    // break;
                     const { default: LineupManager } = await import('./pages/lineups.js');
                     this.activeManager = new LineupManager();
+                    window.lineupManager = this.activeManager; // Add this line
                     await this.activeManager.init();
                     break;
-                    
+
                 default:
                     console.warn('No matching page found for:', this.currentPage);
             }
