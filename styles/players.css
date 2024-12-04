@@ -57,7 +57,7 @@
     box-shadow: var(--shadow);
     overflow: hidden;
     transition: transform 0.3s ease;
-    height: var(--card-height);
+    height: auto;
     display: flex;
     flex-direction: column;
 }
