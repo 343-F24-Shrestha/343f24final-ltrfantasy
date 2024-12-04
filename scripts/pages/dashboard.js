@@ -677,7 +677,7 @@ class DashboardManager {
         try {
             const insights = await this.getInsights();
             clearElement(this.containers.insights);
-
+    
             insights.forEach(insight => {
                 const insightElement = createElement('div', 'insight-card');
                 insightElement.innerHTML = `
@@ -691,6 +691,7 @@ class DashboardManager {
             handleError(error, 'updateInsights');
         }
     }
+    
 
     async getInsights() {
         // Get relevant data for insights
@@ -698,7 +699,7 @@ class DashboardManager {
             this.api.getUpcomingGames(),
             this.api.getAllTeams()
         ]);
-
+    
         // Generate insights based on data
         return [
             {
@@ -713,11 +714,12 @@ class DashboardManager {
             },
             {
                 title: 'Fantasy Trend',
-                description: this.getFantasyTrendDescription(teams),
-                value: this.getFantasyTrendValue(teams)
+                description: 'Top performing team:',
+                value: await this.getFantasyTrendValue(teams) // Ensure await is used
             }
         ];
     }
+    
 
     getTopMatchupDescription(games) {
         const topGame = games[0]; // Assume first game is top matchup
@@ -735,10 +737,16 @@ class DashboardManager {
 
     getBestBettingDescription(games) {
         const bestBet = games.find(game => game.spread && game.overUnder);
+    
+        if (bestBet) {
+            console.log('Best Bet Spread:', bestBet.spread);
+        }
+    
         return bestBet ?
-            `${bestBet.homeTeam.name} (${bestBet.spread})` :
+            `${bestBet.homeTeam.name} (${bestBet.spread.line})` :
             'No betting lines available';
     }
+    
 
     getBestBettingValue(games) {
         const bestBet = games.find(game => game.spread && game.overUnder);
@@ -747,18 +755,69 @@ class DashboardManager {
             'N/A';
     }
 
-    getFantasyTrendDescription(teams) {
-        // Simplified trend analysis
-        return teams.length > 0 ?
-            `Top performing team: ${teams[0].team.name}` :
-            'No trend data available';
-    }
+    // getFantasyTrendDescription(teams) {
+    //     // Simplified trend analysis
+    //     return teams.length > 0 ?
+    //         `Top performing team: ${teams[0].team.name}` :
+    //         'No trend data available';
+    // }
 
-    getFantasyTrendValue(teams) {
-        return teams.length > 0 ?
-            `${teams[0].team.statistics?.points?.avg || 0} PPG` :
-            'N/A';
+    async getFantasyTrendValue(teams) {
+        try {
+            if (teams.length === 0) return 'No trend data available';
+    
+            const enhancedTeams = await this.enhanceTeamsWithPointsPerGame(teams);
+    
+            // Find the team with the highest PPG
+            const highestPPGTeam = enhancedTeams.reduce((max, teamData) => {
+                const team = teamData.team;
+                return team.pointsPerGame > max.pointsPerGame ? team : max;
+            }, { name: '', pointsPerGame: 0 });
+    
+            if (!highestPPGTeam.name) return 'No trend data available';
+    
+            return `${highestPPGTeam.name} ${highestPPGTeam.pointsPerGame.toFixed(1)} PPG`;
+        } catch (error) {
+            console.error('Error fetching Fantasy Trend Value:', error);
+            return 'No trend data available';
+        }
+    }
+    
+    
+
+    async enhanceTeamsWithPointsPerGame(teams) {
+        return Promise.all(teams.map(async teamData => {
+            const team = teamData.team;
+            const teamId = team.id;
+    
+            try {
+                // Fetch team betting stats
+                const stats = await this.api.getTeamBettingStats(teamId);
+    
+                // Extract points per game from stats
+                const pointsPerGame = stats?.offense?.pointsPerGame?.value || 0;
+    
+                return {
+                    ...teamData,
+                    team: {
+                        ...team,
+                        pointsPerGame,
+                    },
+                };
+            } catch (error) {
+                console.warn(`Failed to load stats for team ${teamId}`, error);
+                return {
+                    ...teamData,
+                    team: {
+                        ...team,
+                        pointsPerGame: 0,
+                    },
+                };
+            }
+        }));
     }
 }
+
+
 
 export default DashboardManager;
