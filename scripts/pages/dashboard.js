@@ -263,21 +263,53 @@ class DashboardManager {
                 return;
             }
     
-            // Enhance teams with win/loss record and calculate ratios
-            const enhancedTeams = teams.map(teamData => {
-                const team = teamData.team;
+            // Fetch detailed records for each team
+            const enhancedTeams = await Promise.all(
+                teams.map(async (teamData) => {
+                    const team = teamData.team;
     
-                const recordSummary = team.record?.items?.[0]?.summary || '0-0';
-                const [wins, losses] = recordSummary.split('-').map(Number);
-                const totalGames = wins + losses;
+                    try {
+                        // Fetch the record details from the record endpoint
+                        const recordResponse = await fetch(
+                            `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/types/2/teams/${team.id}/record`
+                        );
+                        const recordData = await recordResponse.json();
     
-                return {
-                    ...team,
-                    wins: wins || 0,
-                    losses: losses || 0,
-                    winLossRatio: totalGames > 0 ? wins / totalGames : 0
-                };
-            });
+                        // Locate the "overall" record using the "name" field
+                        const overallRecord = recordData.items.find((record) => record.name === 'overall');
+    
+                        // Extract wins, losses, and ties from stats
+                        const winsStat = overallRecord?.stats.find(stat => stat.name === 'wins');
+                        const lossesStat = overallRecord?.stats.find(stat => stat.name === 'losses');
+                        const tiesStat = overallRecord?.stats.find(stat => stat.name === 'ties');
+    
+                        const wins = winsStat?.value || 0;
+                        const losses = lossesStat?.value || 0;
+                        const ties = tiesStat?.value || 0;
+    
+                        const totalGames = wins + losses + ties;
+                        const winLossRatio = totalGames > 0 ? wins / totalGames : 0;
+    
+                        return {
+                            ...team,
+                            wins,
+                            losses,
+                            ties,
+                            winLossRatio,
+                        };
+                    } catch (recordError) {
+                        console.error(`Failed to fetch record for team ${team.id}:`, recordError);
+                        return {
+                            ...team,
+                            wins: 0,
+                            losses: 0,
+                            ties: 0,
+                            winLossRatio: 0,
+                        };
+                    }
+                })
+            );
+    
             // Sort by win/loss ratio, then by losses in ascending order
             const sortedTeams = enhancedTeams.sort((a, b) => {
                 if (b.winLossRatio === a.winLossRatio) {
@@ -290,7 +322,7 @@ class DashboardManager {
             const topTeams = sortedTeams.slice(0, 5);
     
             // Display the top 5 teams
-            topTeams.forEach(team => {
+            topTeams.forEach((team) => {
                 const teamElement = this.createTeamElement(team);
                 if (teamElement) {
                     this.containers.topTeams.appendChild(teamElement);
@@ -305,6 +337,8 @@ class DashboardManager {
             }
         }
     }
+    
+    
     
     
 
@@ -587,7 +621,11 @@ class DashboardManager {
             const teamId = team.id;
             const division = divisionConferenceMap[teamId]?.division || 'N/A';
             const conference = divisionConferenceMap[teamId]?.conference || 'N/A';
-            const recordSummary = team.record?.items?.[0]?.summary || '0-0';
+    
+            const wins = team.wins || 0;
+            const losses = team.losses || 0;
+            const ties = team.ties || 0;
+            const recordSummary = `${wins}-${losses}${ties > 0 ? `-${ties}` : ''}`;
     
             element.innerHTML = `
                 <div class="team-header">
@@ -597,9 +635,9 @@ class DashboardManager {
                     <h3>${team.displayName || 'Unknown Team'}</h3>
                 </div>
                 <div class="team-info">
-                    <div class="info-row">Record: ${recordSummary}</div>
                     <div class="info-row">Location: ${team.location || 'N/A'}</div>
                     <div class="info-row">Division: ${conference} ${division}</div>
+                    <div class="info-row">Record: ${recordSummary}</div>
                 </div>
             `;
             return element;
