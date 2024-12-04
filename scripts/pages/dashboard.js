@@ -39,7 +39,7 @@ class DashboardManager {
                 await this.loadAllSections();
                 DebugLogger.log('UI', 'Teams display updated');
             }
-            //await this.loadAllSections();
+            await this.loadAllSections();
             //this.loadAdditionalData();  // Then maayybbeee we load more stuff
             // theres no way we have enough api bandwidth for this yet
             // this.startUpdateIntervals();
@@ -280,22 +280,23 @@ class DashboardManager {
 
     async updateTopPlayers() {
         try {
+            console.log('Fetching active players...');
             const players = await this.api.getAllActivePlayers();
-            
+
             // Enhance players with stats
-            const enhancedPlayers = await Promise.all(
-                players.slice(0, 5).map(async (player) => {
-                    const stats = await this.api.getPlayerFantasyStats(player.id);
-                    const fantasyPoints = await this.calculateFantasyPoints(stats);
-                    return { ...player, fantasyPoints };
-                })
-            );
-    
+            const enhancedPlayers = await this.enhancePlayersWithStats(players);
+
+            // Sort players by fantasy points in descending order
+            const sortedPlayers = sortBy(enhancedPlayers, 'fantasyPoints', true);
+
+            // Take top 5 players
+            const topPlayers = sortedPlayers.slice(0, 5);
+
             // Clear container
             clearElement(this.containers.topPlayers);
-    
+
             // Create and append player elements
-            for (const player of enhancedPlayers) {
+            for (const player of topPlayers) {
                 const playerElement = await this.createPlayerElement(player);
                 if (playerElement instanceof HTMLElement) {
                     this.containers.topPlayers.appendChild(playerElement);
@@ -303,6 +304,8 @@ class DashboardManager {
                     console.error('Invalid player element:', playerElement);
                 }
             }
+
+            console.log('Top players updated successfully');
         } catch (error) {
             handleError(error, 'updateTopPlayers');
         }
@@ -315,17 +318,14 @@ class DashboardManager {
         return Promise.all(players.map(async (player) => {
             try {
                 const stats = await this.api.getPlayerFantasyStats(player.id);
-                console.log(`Stats for ${player.fullName}:`, stats); // Debugging
                 const fantasyPoints = await this.calculateFantasyPoints(stats);
-                console.log(`Fantasy Points for ${player.fullName}:`, fantasyPoints); // Debugging
                 return { ...player, fantasyStats: stats, fantasyPoints };
             } catch (error) {
                 console.warn(`Failed to load stats for player ${player.id}`, error);
-                return player;
+                return { ...player, fantasyPoints: 0 };
             }
         }));
     }
-    
     
     async calculateFantasyPoints(stats) {
         if (!stats) return 0;
@@ -342,6 +342,14 @@ class DashboardManager {
         );
     }
 
+    async sortBy(array, key, descending = false) {
+        return array.sort((a, b) => {
+            const aValue = a[key] || 0;
+            const bValue = b[key] || 0;
+            return descending ? bValue - aValue : aValue - bValue;
+        });
+    }
+    
     // startUpdateIntervals() {
     //     setInterval(() => this.updateLiveGames(), 30000);
     //     setInterval(() => this.loadAllSections(), 300000);
@@ -536,19 +544,6 @@ class DashboardManager {
         
         const playerHeadshot = player.headshot || `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.id}.png&h=150&w=150&scale=crop`;
         
-        let playerStatus = 'Unknown';
-        try {
-            if (player.team) {
-                const response = await fetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams/${player.team}/injuries`);
-                const data = await response.json();
-                
-                const injuryData = data.items?.find(item => item.$ref.includes(player.id));
-                playerStatus = injuryData ? 'Injured' : 'Healthy';
-            }
-        } catch (error) {
-            console.warn(`Failed to fetch status for player ${player.id}:`, error);
-        }
-    
         element.innerHTML = `
             <div class="player-header">
                 <img src="${playerHeadshot}" alt="${player.fullName}" class="player-image">
@@ -558,12 +553,10 @@ class DashboardManager {
                 <div class="info-row"><span>Position:</span><span>${player.position}</span></div>
                 <div class="info-row"><span>Team:</span><span>${player.team}</span></div>
                 <div class="info-row"><span>Fantasy Pts:</span><span>${player.fantasyPoints?.toFixed(1) || '0.0'}</span></div>
-                <div class="info-row"><span>Status:</span><span>${playerStatus}</span></div>
             </div>
             <a href="players.html?id=${player.id}" class="player-link">View Details</a>
         `;
-    
-        console.log('Created player element:', element);
+        
         return element;
     }
     
