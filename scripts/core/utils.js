@@ -129,16 +129,22 @@ export const handleError = (error, context) => {
 };
 
 // Data sorting
-export const sortBy = (array, key, descending = false) => {
-    return [...array].sort((a, b) => {
-        const aVal = typeof a[key] === 'string' ? a[key].toLowerCase() : a[key];
-        const bVal = typeof b[key] === 'string' ? b[key].toLowerCase() : b[key];
+export function sortBy(array, key, descending = false) {
+    return array.sort((a, b) => {
+        const aValue = a[key];
+        const bValue = b[key];
 
-        if (aVal < bVal) return descending ? 1 : -1;
-        if (aVal > bVal) return descending ? -1 : 1;
-        return 0;
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+            return descending ? bValue - aValue : aValue - bValue;
+        } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+            return descending ? bValue.localeCompare(aValue) : aValue.localeCompare(bValue);
+        } else {
+            return 0;
+        }
     });
-};
+}
+
+
 
 export default {
     validateApiResponse,
