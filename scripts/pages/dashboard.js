@@ -250,26 +250,54 @@ class DashboardManager {
     async updateTopTeams() {
         try {
             const teams = await this.api.getAllTeams();
-            console.log('Teams data received:', teams);
-
+    
             if (!this.containers.topTeams) {
                 console.error('Top teams container not found');
                 return;
             }
-
+    
             clearElement(this.containers.topTeams);
-
+    
             if (!teams || teams.length === 0) {
                 this.containers.topTeams.innerHTML = '<div class="no-data">No teams available</div>';
                 return;
             }
-
-            teams.slice(0, 5).forEach(teamData => {
-                const teamElement = this.createTeamElement(teamData);
+    
+            // Enhance teams with win/loss record and calculate ratios
+            const enhancedTeams = teams.map(teamData => {
+                const team = teamData.team;
+    
+                const recordSummary = team.record?.items?.[0]?.summary || '0-0';
+                const [wins, losses] = recordSummary.split('-').map(Number);
+                const totalGames = wins + losses;
+    
+                return {
+                    ...team,
+                    wins: wins || 0,
+                    losses: losses || 0,
+                    winLossRatio: totalGames > 0 ? wins / totalGames : 0
+                };
+            });
+            // Sort by win/loss ratio, then by losses in ascending order
+            const sortedTeams = enhancedTeams.sort((a, b) => {
+                if (b.winLossRatio === a.winLossRatio) {
+                    return a.losses - b.losses; // Fewer losses rank higher
+                }
+                return b.winLossRatio - a.winLossRatio; // Higher win ratio ranks higher
+            });
+    
+            // Get top 5 teams
+            const topTeams = sortedTeams.slice(0, 5);
+    
+            // Display the top 5 teams
+            topTeams.forEach(team => {
+                const teamElement = this.createTeamElement(team);
                 if (teamElement) {
                     this.containers.topTeams.appendChild(teamElement);
                 }
             });
+    
+            console.log('Top teams updated successfully');
         } catch (error) {
             console.error('Error updating teams:', error);
             if (this.containers.topTeams) {
@@ -277,6 +305,8 @@ class DashboardManager {
             }
         }
     }
+    
+    
 
     async updateTopPlayers() {
         try {
@@ -514,30 +544,71 @@ class DashboardManager {
 
     // better or worse but.. simpler
 
-    createTeamElement(teamData) {
+    createTeamElement(team) {
         try {
             const element = createElement('div', 'team-card');
-            const team = teamData.team;
-
+    
+            // Hardcoded division and conference mapping
+            const divisionConferenceMap = {
+                "1": { division: "South", conference: "NFC" },
+                "2": { division: "East", conference: "AFC" },
+                "3": { division: "North", conference: "NFC" },
+                "4": { division: "North", conference: "AFC" },
+                "5": { division: "North", conference: "AFC" },
+                "6": { division: "East", conference: "NFC" },
+                "7": { division: "West", conference: "AFC" },
+                "8": { division: "North", conference: "NFC" },
+                "9": { division: "North", conference: "NFC" },
+                "10": { division: "South", conference: "AFC" },
+                "11": { division: "South", conference: "AFC" },
+                "12": { division: "West", conference: "AFC" },
+                "13": { division: "West", conference: "AFC" },
+                "14": { division: "West", conference: "NFC" },
+                "15": { division: "East", conference: "AFC" },
+                "16": { division: "North", conference: "NFC" },
+                "17": { division: "East", conference: "AFC" },
+                "18": { division: "South", conference: "NFC" },
+                "19": { division: "East", conference: "NFC" },
+                "20": { division: "East", conference: "AFC" },
+                "21": { division: "East", conference: "NFC" },
+                "22": { division: "West", conference: "NFC" },
+                "23": { division: "North", conference: "AFC" },
+                "24": { division: "West", conference: "AFC" },
+                "25": { division: "West", conference: "NFC" },
+                "26": { division: "West", conference: "NFC" },
+                "27": { division: "South", conference: "NFC" },
+                "28": { division: "East", conference: "NFC" },
+                "29": { division: "South", conference: "NFC" },
+                "30": { division: "South", conference: "AFC" },
+                "33": { division: "North", conference: "AFC" },
+                "34": { division: "South", conference: "AFC" }
+            };
+    
+            const teamId = team.id;
+            const division = divisionConferenceMap[teamId]?.division || 'N/A';
+            const conference = divisionConferenceMap[teamId]?.conference || 'N/A';
+            const recordSummary = team.record?.items?.[0]?.summary || '0-0';
+    
             element.innerHTML = `
                 <div class="team-header">
                     <img src="${team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
-                         alt="${team.name || 'Team'} logo" 
+                         alt="${team.displayName || 'Team'} logo" 
                          class="team-logo">
-                    <h3>${team.name || 'Unknown Team'}</h3>
+                    <h3>${team.displayName || 'Unknown Team'}</h3>
                 </div>
                 <div class="team-info">
+                    <div class="info-row">Record: ${recordSummary}</div>
                     <div class="info-row">Location: ${team.location || 'N/A'}</div>
-                    <div class="info-row">Division: ${team.division?.name || 'N/A'}</div>
-                    <div class="info-row">Conference: ${team.conference?.name || 'N/A'}</div>
+                    <div class="info-row">Division: ${conference} ${division}</div>
                 </div>
             `;
             return element;
         } catch (error) {
-            console.error('Error creating team element:', error, teamData);
+            console.error('Error creating team element:', error, team);
             return null;
         }
     }
+    
 
     async createPlayerElement(player) {
         const element = createElement('div', 'player-card');
