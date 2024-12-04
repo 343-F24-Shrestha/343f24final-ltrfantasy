@@ -75,21 +75,72 @@ class TeamsManager {
     }
 
     async enhanceTeamsWithStats(teams) {
-        return Promise.all(teams.map(async team => {
+        const currentYear = new Date().getFullYear();
+        const seasonType = 2; // Regular season
+    
+        return Promise.all(teams.map(async teamData => {
+            const team = teamData.team;
+    
             try {
-                const stats = await this.api.getTeamBettingStats(team.team.id);
-                const bettingTrends = await this.api.getTeamTrends(team.team.id);
+                const teamId = team.id;
+    
+                // Fetch team betting stats and trends as before
+                const [stats, bettingTrends] = await Promise.all([
+                    this.api.getTeamBettingStats(teamId),
+                    this.api.getTeamTrends(teamId),
+                ]);
+    
+                // Fetch the record details from the record endpoint
+                const recordResponse = await fetch(
+                    `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${currentYear}/types/${seasonType}/teams/${teamId}/record`
+                );
+                const recordData = await recordResponse.json();
+    
+                // Locate the "overall" record using the "name" field
+                const overallRecord = recordData.items.find((record) => record.name === 'overall');
+    
+                // Extract wins, losses, and ties from stats
+                const winsStat = overallRecord?.stats.find(stat => stat.name === 'wins');
+                const lossesStat = overallRecord?.stats.find(stat => stat.name === 'losses');
+                const tiesStat = overallRecord?.stats.find(stat => stat.name === 'ties');
+    
+                const wins = winsStat?.value || 0;
+                const losses = lossesStat?.value || 0;
+                const ties = tiesStat?.value || 0;
+    
+                const totalGames = wins + losses + ties;
+                const winPercentage = totalGames > 0 ? wins / totalGames : 0;
+    
                 return {
-                    ...team,
+                    ...teamData,
+                    team: {
+                        ...team,
+                        wins,
+                        losses,
+                        ties,
+                    },
+                    winPercentage,
                     stats,
-                    bettingTrends
+                    bettingTrends,
                 };
             } catch (error) {
-                console.warn(`Failed to load stats for team ${team.team.id}`, error);
-                return team;
+                console.warn(`Failed to load stats for team ${team.id}`, error);
+                return {
+                    ...teamData,
+                    team: {
+                        ...team,
+                        wins: 0,
+                        losses: 0,
+                        ties: 0,
+                    },
+                    winPercentage: 0,
+                    stats: {},
+                    bettingTrends: {},
+                };
             }
         }));
     }
+    
 
     filterTeams() {
         return this.teams.filter(team => {
@@ -124,12 +175,12 @@ class TeamsManager {
         
         card.innerHTML = `
             <div class="team-header">
-                <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
-                     alt="${team.team.name} logo" 
-                     class="team-logo">
-                <h3>${team.team.name}</h3>
-                <div class="team-record">${this.formatRecord(team.stats)}</div>
-            </div>
+            <img src="${team.team.logos?.[0]?.href || 'images/genericLogo.jpg'}" 
+                 alt="${team.team.name} logo" 
+                 class="team-logo">
+            <h3>${team.team.name}</h3>
+            <div class="team-record">${this.formatRecord(team)}</div>
+        </div>
             <div class="team-stats">
                 <div class="stat-column">
                     <div class="stat">
@@ -169,12 +220,13 @@ class TeamsManager {
         return card;
     }
 
-    formatRecord(stats) {
-        const wins = stats?.overall?.wins?.value || 0;
-        const losses = stats?.overall?.losses?.value || 0;
-        const ties = stats?.overall?.ties?.value || 0;
+    formatRecord(team) {
+        const wins = team.team.wins || 0;
+        const losses = team.team.losses || 0;
+        const ties = team.team.ties || 0;
         return `${wins}-${losses}${ties > 0 ? `-${ties}` : ''}`;
     }
+    
 
     formatAtsRecord(trends) {
         const wins = trends?.ats?.record?.wins || 0;
