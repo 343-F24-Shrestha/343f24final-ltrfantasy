@@ -18,44 +18,47 @@ class StorageManager {
     async initDB() {
         try {
             return new Promise((resolve, reject) => {
+                console.log('Initializing IndexedDB...');
                 const request = indexedDB.open(this.dbName, this.dbVersion);
-                
+
                 request.onerror = (event) => {
-                    console.error('IndexedDB error:', event.target.error);
+                    console.error('IndexedDB initialization error:', event.target.error);
                     this.fallbackToLocalStorage = true;
                     resolve(); // Resolve anyway to continue with localStorage
                 };
-    
+
                 request.onupgradeneeded = (event) => {
+                    console.log('IndexedDB upgrade needed');
                     const db = event.target.result;
                     
-                    // Create store if it doesn't exist
-                    if (!db.objectStoreNames.contains(this.stores.cache)) {
-                        const cacheStore = db.createObjectStore(this.stores.cache, { 
-                            keyPath: 'key' 
-                        });
-                        cacheStore.createIndex('timestamp', 'timestamp', { unique: false });
-                    }
-    
-                    // Create other stores
                     Object.values(this.stores).forEach(storeName => {
                         if (!db.objectStoreNames.contains(storeName)) {
-                            db.createObjectStore(storeName, { 
-                                keyPath: 'id',
-                                autoIncrement: true 
-                            });
+                            console.log(`Creating store: ${storeName}`);
+                            if (storeName === this.stores.cache) {
+                                const store = db.createObjectStore(storeName, { keyPath: 'key' });
+                                store.createIndex('timestamp', 'timestamp', { unique: false });
+                            } else {
+                                db.createObjectStore(storeName, { 
+                                    keyPath: 'id',
+                                    autoIncrement: true 
+                                });
+                            }
                         }
                     });
                 };
-    
+
                 request.onsuccess = (event) => {
                     this.db = event.target.result;
-                    console.log('IndexedDB initialized successfully');
+                    console.log('IndexedDB initialized successfully:', {
+                        name: this.db.name,
+                        version: this.db.version,
+                        stores: [...this.db.objectStoreNames]
+                    });
                     resolve(this.db);
                 };
             });
         } catch (error) {
-            console.error('IndexedDB initialization failed:', error);
+            console.error('Critical IndexedDB error:', error);
             this.fallbackToLocalStorage = true;
             return Promise.resolve();
         }
@@ -68,67 +71,103 @@ class StorageManager {
     // Cache methods
     async setCache(key, value, ttl = 3600) {
         await this.ensureReady();
-        
+
         const data = {
             key,
             value,
             timestamp: Date.now(),
             expires: Date.now() + (ttl * 1000)
         };
-    
+
         if (this.fallbackToLocalStorage) {
+            console.log('Set cache fallback to localstorage');
             localStorage.setItem(key, JSON.stringify(data));
             return;
         }
-    
+
+        console.log(`Storing in cache:`, {
+            key,
+            ttl,
+            expiresAt: new Date(data.expires).toLocaleString()
+        });
+
         try {
             const tx = this.db.transaction(this.stores.cache, 'readwrite');
             const store = tx.objectStore(this.stores.cache);
+            
             await new Promise((resolve, reject) => {
                 const request = store.put(data);
                 request.onsuccess = () => resolve();
                 request.onerror = () => reject(request.error);
             });
-    
-            // Only cleanup occasionally
-            if (Math.random() < 0.1) {
-                await this.clearExpiredCache();
-            }
+
+            // Verify
+            const verify = await new Promise((resolve, reject) => {
+                const request = store.get(key);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            console.log(`Cache write verified:`, verify ? 'success' : 'failed');
+            return true;
         } catch (error) {
             console.error('Cache set error:', error);
+            console.log('Falling back to localstorage');
             localStorage.setItem(key, JSON.stringify(data));
+            return false;
         }
     }
 
     async getCache(key) {
         await this.ensureReady();
+        console.log(`Checking cache for key: ${key}`);
 
         if (this.fallbackToLocalStorage) {
+            console.log('Using localStorage fallback');
             const data = localStorage.getItem(key);
-            if (!data) return null;
+            if (!data) {
+                console.log('No data in localStorage');
+                return null;
+            }
             const parsed = JSON.parse(data);
             if (Date.now() > parsed.expires) {
+                console.log('Data expired in localStorage');
                 localStorage.removeItem(key);
                 return null;
             }
+            console.log('Found valid data in localStorage');
             return parsed.value;
         }
 
         try {
             const tx = this.db.transaction(this.stores.cache, 'readonly');
             const store = tx.objectStore(this.stores.cache);
-            const data = await store.get(key);
 
-            if (!data || Date.now() > data.expires) {
-                if (data) {
-                    // Remove expired data
-                    const deleteTx = this.db.transaction(this.stores.cache, 'readwrite');
-                    const deleteStore = deleteTx.objectStore(this.stores.cache);
-                    await deleteStore.delete(key);
-                }
+
+            // Properly wrap IDBRequest in a Promise
+            const data = await new Promise((resolve, reject) => {
+                const request = store.get(key);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            console.log('IndexedDB query result:', data);
+
+            if (!data) {
+                console.log('No data in IndexedDB');
                 return null;
             }
 
+            if (Date.now() > data.expires) {
+                console.log('Data expired in IndexedDB');
+                // Remove expired data
+                const deleteTx = this.db.transaction(this.stores.cache, 'readwrite');
+                const deleteStore = deleteTx.objectStore(this.stores.cache);
+                await deleteStore.delete(key);
+                return null;
+            }
+
+            console.log('Found valid data in IndexedDB');
             return data.value;
         } catch (error) {
             console.error('Cache get error:', error);
@@ -142,7 +181,7 @@ class StorageManager {
             const store = tx.objectStore(this.stores.cache);
             const index = store.index('timestamp');
             const now = Date.now();
-            
+
             // Fix: Use a cursor to iterate through expired items
             const request = index.openCursor();
             request.onsuccess = (event) => {

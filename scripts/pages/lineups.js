@@ -47,6 +47,30 @@ class LineupManager {
         }
     }
 
+    exportLineup() {
+        const blob = new Blob([JSON.stringify(this.currentLineup)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'lineup.json';
+        a.click();
+    }
+    
+    importLineup(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            this.currentLineup = JSON.parse(e.target.result);
+            this.renderLineup();
+        };
+        reader.readAsText(file);
+    }
+    
+    clearData() {
+        this.storage.clearAllData();
+        this.currentLineup = {};
+        this.renderLineup();
+    }
+
     setupEventListeners() {
         // Save lineup button
         document.getElementById('save-lineup')?.addEventListener('click', () => {

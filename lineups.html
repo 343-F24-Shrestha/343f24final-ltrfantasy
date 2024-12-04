@@ -1,6 +1,7 @@
 <!-- lineups.html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,6 +10,7 @@
     <link rel="stylesheet" href="styles/lineups.css">
     <link rel="icon" type="image/png" href="images/favicon.png">
 </head>
+
 <body data-page="lineups">
     <header>
         <h1>LTR FANTASY</h1>
@@ -30,6 +32,9 @@
                 <button id="save-lineup">Save Lineup</button>
                 <button id="optimize-lineup">Optimize Lineup</button>
                 <button id="clear-lineup">Clear Lineup</button>
+                <button onclick="lineupManager.exportLineup()">Export Lineup</button>
+                <input type="file" onchange="lineupManager.importLineup(this.files[0])">
+                <button onclick="lineupManager.clearData()">Clear All Data</button>
             </div>
             <div id="total-projected-points"></div>
         </section>
@@ -45,4 +50,5 @@
 
     <script type="module" src="scripts/pages/main.js"></script>
 </body>
+
 </html>
