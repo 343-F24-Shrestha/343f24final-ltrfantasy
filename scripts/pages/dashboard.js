@@ -19,8 +19,8 @@ class DashboardManager {
 
         // Test storage for no reason
         try {
-            this.storage.set('test_key', { test: 'data' });
-            const testData = this.storage.get('test_key');
+            this.storage.setCache('test_key', { test: 'data' });
+            const testData = this.storage.getCache('test_key');
             console.log('Storage test:', testData ? 'working' : 'failed');
         } catch (error) {
             console.error('Storage test failed:', error);
@@ -31,18 +31,18 @@ class DashboardManager {
         try {
             DebugLogger.log('Loading', 'Starting dashboard initialization');
             showLoading();
+
+            // Ensure storage and API are initialized
+            await this.storage.ensureReady();
+            await this.api.init();
+
             const teams = await this.api.getAllTeams();
-            DebugLogger.log('API', 'Teams data received', teams);
-            // for now lets just try JUST the teams cuz the api sucks rn
-            if (teams?.length) {
-                //await this.updateTopTeams();
-                await this.loadAllSections();
-                DebugLogger.log('UI', 'Teams display updated');
+            if (!teams?.length) {
+                throw new Error('Failed to initialize - no teams data available');
             }
+
             await this.loadAllSections();
-            //this.loadAdditionalData();  // Then maayybbeee we load more stuff
-            // theres no way we have enough api bandwidth for this yet
-            // this.startUpdateIntervals();
+
             updateFooter('Dashboard initialized successfully');
         } catch (error) {
             console.error('Dashboard initialization error:', error);
@@ -374,9 +374,9 @@ class DashboardManager {
             handleError(error, 'updateTopPlayers');
         }
     }
-    
-    
-    
+
+
+
     // Enhance a single player with stats (helper method)
     async enhancePlayersWithStats(players) {
         return Promise.all(players.map(async (player) => {
@@ -390,10 +390,10 @@ class DashboardManager {
             }
         }));
     }
-    
+
     async calculateFantasyPoints(stats) {
         if (!stats) return 0;
-        
+
         // Basic PPR scoring
         return (
             (stats.passing?.yards?.value || 0) * 0.04 +
@@ -413,7 +413,7 @@ class DashboardManager {
             return descending ? bValue - aValue : aValue - bValue;
         });
     }
-    
+
     // startUpdateIntervals() {
     //     setInterval(() => this.updateLiveGames(), 30000);
     //     setInterval(() => this.loadAllSections(), 300000);
@@ -513,7 +513,7 @@ class DashboardManager {
 
     createGameElement(game) {
         const element = createElement('div', 'game-card');
-        
+
         element.innerHTML = `
             <div class="game-teams">
                 <div class="team-matchup">
@@ -540,7 +540,7 @@ class DashboardManager {
                 ${game.status || 'Upcoming'} • ${formatters.dateTime(game.startTime)}
             </div>
         `;
-    
+
         return element;
     }
 
@@ -650,9 +650,9 @@ class DashboardManager {
 
     async createPlayerElement(player) {
         const element = createElement('div', 'player-card');
-        
+
         const playerHeadshot = player.headshot || `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.id}.png&h=150&w=150&scale=crop`;
-        
+
         element.innerHTML = `
             <div class="player-header">
                 <img src="${playerHeadshot}" alt="${player.fullName}" class="player-image">
@@ -665,12 +665,12 @@ class DashboardManager {
             </div>
             <a href="players.html?id=${player.id}" class="player-link">View Details</a>
         `;
-        
+
         return element;
     }
-    
-    
-    
+
+
+
 
 
     async updateInsights() {

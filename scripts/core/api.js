@@ -2,7 +2,7 @@
 
 // Import core dependencies
 import CONFIG from './config.js';
-import { StorageWrapper } from './storage.js';
+import StorageManager from './storage.js';
 import { validateApiResponse, formatters, DebugLogger } from './utils.js';
 
 class NFLDataService {
@@ -11,15 +11,21 @@ class NFLDataService {
             core: 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl',
             site: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'
         };
-        this.cache = new StorageWrapper();
-        this.requestQueue = [];
+
+        this.storage = new StorageManager();
+        
         this.rateLimit = {
             requests: 0,
             lastReset: Date.now(),
             maxRequests: 20,
-            resetInterval: 30000,
-            queueDelay: 500 // ms between requests
+            resetInterval: 60000, // 1 minute
+            queueDelay: 250, // ms between requests
+            backoffMultiplier: 1.5,
+            maxBackoff: 10000 // 10 seconds max delay
         };
+
+        this.requestQueue = [];
+        this.processingQueue = false;
 
         // Add new properties for feature management
         this.activeSubscriptions = new Map();
@@ -27,6 +33,25 @@ class NFLDataService {
         this.lastUpdate = null;
         this.currentSeason = new Date().getFullYear();
         this.fallbackSeason = this.currentSeason - 1;
+
+        this.initializeEventListeners();
+    }
+
+    async init() {
+        await this.storage.ensureReady();
+    }
+
+    initializeEventListeners() {
+        // Listen for storage quota warnings
+        if (navigator.storage && navigator.storage.estimate) {
+            navigator.storage.estimate().then(estimate => {
+                const usageRatio = estimate.usage / estimate.quota;
+                if (usageRatio > 0.8) {
+                    console.warn('Storage usage high, clearing old cache...');
+                    this.storage.clearExpiredCache();
+                }
+            });
+        }
     }
 
     async fetchWithRetry(url, options = {}) {
@@ -153,24 +178,52 @@ class NFLDataService {
     //     return true;
     // }
 
+    // async throttleRequest() {
+    //     const now = Date.now();
+    //     if (now - this.rateLimit.lastReset > this.rateLimit.resetInterval) {
+    //         this.rateLimit.requests = 0;
+    //         this.rateLimit.lastReset = now;
+    //         console.log("Rate limit reset");
+    //     }
+
+    //     if (this.rateLimit.requests >= this.rateLimit.maxRequests) {
+    //         const waitTime = this.rateLimit.resetInterval;
+    //         console.log(`Rate limit reached, waiting ${waitTime / 1000} seconds...`);
+    //         await new Promise(resolve => setTimeout(resolve, waitTime));
+    //         this.rateLimit.requests = 0;
+    //         this.rateLimit.lastReset = Date.now();
+    //         return true;
+    //     }
+
+    //     // Add longer delay between requests
+    //     await new Promise(resolve => setTimeout(resolve, this.rateLimit.queueDelay));
+    //     this.rateLimit.requests++;
+    //     return true;
+    // }
+
     async throttleRequest() {
         const now = Date.now();
         if (now - this.rateLimit.lastReset > this.rateLimit.resetInterval) {
             this.rateLimit.requests = 0;
             this.rateLimit.lastReset = now;
-            console.log("Rate limit reset");
-        }
-
-        if (this.rateLimit.requests >= this.rateLimit.maxRequests) {
-            const waitTime = this.rateLimit.resetInterval;
-            console.log(`Rate limit reached, waiting ${waitTime / 1000} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            this.rateLimit.requests = 0;
-            this.rateLimit.lastReset = Date.now();
+            this.rateLimit.backoffMultiplier = 1.5; // Reset backoff
             return true;
         }
 
-        // Add longer delay between requests
+        if (this.rateLimit.requests >= this.rateLimit.maxRequests) {
+            const delay = Math.min(
+                this.rateLimit.backoffMultiplier * this.rateLimit.queueDelay,
+                this.rateLimit.maxBackoff
+            );
+            
+            console.log(`Rate limit reached, waiting ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            // Increase backoff for next time
+            this.rateLimit.backoffMultiplier *= 1.5;
+            return this.throttleRequest();
+        }
+
         await new Promise(resolve => setTimeout(resolve, this.rateLimit.queueDelay));
         this.rateLimit.requests++;
         return true;
@@ -226,14 +279,18 @@ class NFLDataService {
 
             // Check cache first unless force refresh
             if (!forceRefresh) {
-                const cachedTeams = this.cache.get(cacheKey);
+                const cachedTeams = this.storage.getCache(cacheKey);
                 if (cachedTeams) {
                     console.log('Using cached teams data');
-                    return cachedTeams;
+                    if (cachedTeams.length > 0) {  // Add validation
+                        return cachedTeams;
+                    }
                 }
             }
-
+            
             console.log('Fetching fresh teams data');
+            await this.throttleRequest();
+            console.log('Finished waiting on throttleRequest for teams data');
             const response = await fetch(`${this.baseUrls.site}/teams`);
             //Debug
             DebugLogger.log('API', 'Teams API response received', { status: response.status });
@@ -254,16 +311,20 @@ class NFLDataService {
             }
 
             const teams = data.sports[0].leagues[0].teams;
+            if (!teams || teams.length === 0) {
+                throw new Error('No teams data received');
+            }
             console.log(`Retrieved ${teams.length} teams`);
 
             // Cache for 24 hours
-            this.cache.set(cacheKey, teams, 86400);
+            await this.storage.setCache(cacheKey, teams, 86400);
             
             return teams;
         } catch (error) {
             DebugLogger.log('Error', 'Teams fetch failed', error);
             console.error('Error fetching teams:', error);
-            return [];
+            //return [];
+            throw error; // Propagate error instead of returning empty array
         }
     }
 
@@ -271,22 +332,22 @@ class NFLDataService {
         const cacheKey = `team_roster_${teamId}`;
         try {
             // Check cache first
-            const cachedRoster = this.cache.get(cacheKey);
+            const cachedRoster = await this.storage.getCache(cacheKey);
             if (cachedRoster) {
                 return cachedRoster;
             }
-
+    
             await this.throttleRequest();
             const response = await fetch(
                 `${this.baseUrls.site}/teams/${teamId}/roster?enable=roster,stats`
             );
-
+    
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-
+    
             const data = await response.json();
-            this.cache.set(cacheKey, data, 86400); // Cache for 24 hours
+            await this.storage.setCache(cacheKey, data, 86400); // Cache for 24 hours
             return data;
         } catch (error) {
             console.error(`Error fetching roster for team ${teamId}:`, error);
@@ -426,59 +487,124 @@ class NFLDataService {
 
     // Sike we re doing this AGAIN
 
-    async getAllActivePlayers() {
+    // async getAllActivePlayers() {
+    //     try {
+    //         const teams = await this.getAllTeams();
+    //         if (!teams?.length) {
+    //             throw new Error("No teams retrieved");
+    //         }
+    //         let allPlayers = [];
+            
+    //         // Process only 8 teams at a time to avoid rate limits
+    //         const BATCH_SIZE = 8;
+    //         for (let i = 0; i < teams.length; i += BATCH_SIZE) {
+    //             const teamBatch = teams.slice(i, i + BATCH_SIZE);
+                
+    //             const batchPromises = teamBatch.map(async (teamData) => {
+    //                 try {
+    //                     // Check cache first with a unique key
+    //                     const cacheKey = `roster_${teamData.team.id}`;
+    //                     const cachedRoster = this.cache.get(cacheKey);
+                        
+    //                     if (cachedRoster) {
+    //                         console.log(`Using cached roster for ${teamData.team.name}`);
+    //                         return cachedRoster;
+    //                     }
+    
+    //                     await this.throttleRequest();
+    //                     const rosterData = await this.fetchWithCache(
+    //                         `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
+    //                     );
+    
+    //                     if (rosterData?.athletes) {
+    //                         const activePlayers = this.processRosterData(rosterData, teamData);
+    //                         this.cache.set(cacheKey, activePlayers, 86400); // Cache for 24 hours
+    //                         return activePlayers;
+    //                     }
+    //                 } catch (error) {
+    //                     console.warn(`Error processing team ${teamData.team.name}:`, error.message);
+    //                     return [];
+    //                 }
+    //             });
+    
+    //             // Wait between batches
+    //             const batchResults = await Promise.all(batchPromises);
+    //             allPlayers = [...allPlayers, ...batchResults.flat()];
+                
+    //             if (i + BATCH_SIZE < teams.length) {
+    //                 await new Promise(resolve => setTimeout(resolve, 5000));
+    //             }
+    //         }
+    
+    //         return allPlayers;
+    //     } catch (error) {
+    //         console.error("Error in getAllActivePlayers:", error);
+    //         return []; // Return empty array instead of throwing
+    //     }
+    // }
+
+    async getAllActivePlayers(progressCallback = null) {
         try {
             const teams = await this.getAllTeams();
             if (!teams?.length) {
                 throw new Error("No teams retrieved");
             }
+
             let allPlayers = [];
-            
-            // Process only 8 teams at a time to avoid rate limits
             const BATCH_SIZE = 8;
+            const totalTeams = teams.length;
+
+            // Process teams in batches
             for (let i = 0; i < teams.length; i += BATCH_SIZE) {
                 const teamBatch = teams.slice(i, i + BATCH_SIZE);
-                
                 const batchPromises = teamBatch.map(async (teamData) => {
                     try {
-                        // Check cache first with a unique key
                         const cacheKey = `roster_${teamData.team.id}`;
-                        const cachedRoster = this.cache.get(cacheKey);
+                        let rosterData = await this.storage.getCache(cacheKey);
                         
-                        if (cachedRoster) {
-                            console.log(`Using cached roster for ${teamData.team.name}`);
-                            return cachedRoster;
+                        if (!rosterData) {
+                            await this.throttleRequest();
+                            const response = await fetch(
+                                `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
+                            );
+                            rosterData = await response.json();
+                            await this.storage.setCache(cacheKey, rosterData, 3600);
                         }
-    
-                        await this.throttleRequest();
-                        const rosterData = await this.fetchWithCache(
-                            `${this.baseUrls.site}/teams/${teamData.team.id}/roster?enable=roster,stats`
-                        );
-    
+
                         if (rosterData?.athletes) {
-                            const activePlayers = this.processRosterData(rosterData, teamData);
-                            this.cache.set(cacheKey, activePlayers, 86400); // Cache for 24 hours
-                            return activePlayers;
+                            const players = this.processRosterData(rosterData, teamData);
+                            return players;
                         }
+                        return [];
                     } catch (error) {
                         console.warn(`Error processing team ${teamData.team.name}:`, error.message);
                         return [];
                     }
                 });
-    
-                // Wait between batches
+
                 const batchResults = await Promise.all(batchPromises);
-                allPlayers = [...allPlayers, ...batchResults.flat()];
-                
+                const batchPlayers = batchResults.flat();
+                allPlayers = [...allPlayers, ...batchPlayers];
+
+                // Report progress
+                if (progressCallback) {
+                    const progress = Math.round((i + BATCH_SIZE) / totalTeams * 100);
+                    progressCallback(progress, allPlayers.length);
+                }
+
+                // Store batch in IndexedDB
+                await this.storage.setPlayers(batchPlayers, true);
+
+                // Small delay between batches
                 if (i + BATCH_SIZE < teams.length) {
-                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
-    
+
             return allPlayers;
         } catch (error) {
             console.error("Error in getAllActivePlayers:", error);
-            return []; // Return empty array instead of throwing
+            return [];
         }
     }
 
@@ -509,8 +635,22 @@ class NFLDataService {
     }
 
     async getCurrentWeekGames() {
-        const games = await this.fetchWithCache(`${this.baseUrls.site}/scoreboard`);
-        return games?.events || [];
+        try {
+            const cacheKey = 'current_week_games';
+            const cachedGames = await this.storage.getCache(cacheKey);
+            if (cachedGames) {
+                return cachedGames;
+            }
+    
+            const games = await this.fetchWithCache(`${this.baseUrls.site}/scoreboard`);
+            const processedGames = games?.events || [];
+            
+            await this.storage.setCache(cacheKey, processedGames, 300); // Cache for 5 minutes
+            return processedGames;
+        } catch (error) {
+            console.error("Error fetching current week games:", error);
+            return [];
+        }
     }
 
     // Validation Functions
@@ -553,65 +693,111 @@ class NFLDataService {
 
     // Fantasy-relevant player stats
     async getPlayerFantasyStats(playerId) {
-        const stats = await this.fetchWithCache(
-            `${this.baseUrls.core}/seasons/2024/types/2/athletes/${playerId}/statistics`
-        );
-
-        return {
-            passing: {
-                yards: this.extractStat(stats, 'passing', 'passingYards'),
-                touchdowns: this.extractStat(stats, 'passing', 'passingTouchdowns'),
-                interceptions: this.extractStat(stats, 'passing', 'interceptions')
-            },
-            rushing: {
-                yards: this.extractStat(stats, 'rushing', 'rushingYards'),
-                touchdowns: this.extractStat(stats, 'rushing', 'rushingTouchdowns')
-            },
-            receiving: {
-                yards: this.extractStat(stats, 'receiving', 'receivingYards'),
-                touchdowns: this.extractStat(stats, 'receiving', 'receivingTouchdowns'),
-                receptions: this.extractStat(stats, 'receiving', 'receptions')
+        const cacheKey = `player_fantasy_stats_${playerId}`;
+        try {
+            const cachedStats = await this.storage.getCache(cacheKey);
+            if (cachedStats) {
+                return cachedStats;
             }
-        };
+    
+            const stats = await this.fetchWithCache(
+                `${this.baseUrls.core}/seasons/2024/types/2/athletes/${playerId}/statistics`,
+                3600 // 1 hour cache
+            );
+    
+            const fantasyStats = {
+                passing: {
+                    yards: this.extractStat(stats, 'passing', 'passingYards'),
+                    touchdowns: this.extractStat(stats, 'passing', 'passingTouchdowns'),
+                    interceptions: this.extractStat(stats, 'passing', 'interceptions')
+                },
+                rushing: {
+                    yards: this.extractStat(stats, 'rushing', 'rushingYards'),
+                    touchdowns: this.extractStat(stats, 'rushing', 'rushingTouchdowns')
+                },
+                receiving: {
+                    yards: this.extractStat(stats, 'receiving', 'receivingYards'),
+                    touchdowns: this.extractStat(stats, 'receiving', 'receivingTouchdowns'),
+                    receptions: this.extractStat(stats, 'receiving', 'receptions')
+                }
+            };
+    
+            await this.storage.setCache(cacheKey, fantasyStats, 3600);
+            return fantasyStats;
+    
+        } catch (error) {
+            console.error(`Failed to load fantasy stats for player ${playerId}:`, error);
+            return null;
+        }
     }
 
     // Betting-relevant team stats
     async getTeamBettingStats(teamId) {
-        const stats = await this.fetchWithCache(
-            `${this.baseUrls.core}/seasons/2024/types/2/teams/${teamId}/statistics`
-        );
-
-        return {
-            offense: {
-                pointsPerGame: this.extractStat(stats, 'scoring', 'totalPointsPerGame'),
-                totalYards: this.extractStat(stats, 'general', 'totalYards'),
-                passingYards: this.extractStat(stats, 'passing', 'netPassingYards'),
-                rushingYards: this.extractStat(stats, 'rushing', 'rushingYards')
-            },
-            defense: {
-                pointsAllowed: this.extractStat(stats, 'defensive', 'pointsAllowed'),
-                sacks: this.extractStat(stats, 'defensive', 'sacks'),
-                interceptions: this.extractStat(stats, 'defensiveInterceptions', 'interceptions')
-            },
-            trends: {
-                homeRecord: this.extractStat(stats, 'miscellaneous', 'homeRecord'),
-                awayRecord: this.extractStat(stats, 'miscellaneous', 'awayRecord'),
-                lastFiveGames: this.extractStat(stats, 'miscellaneous', 'lastFiveGames')
+        const cacheKey = `team_betting_stats_${teamId}`;
+        try {
+            const cachedStats = await this.storage.getCache(cacheKey);
+            if (cachedStats) {
+                return cachedStats;
             }
-        };
+    
+            const stats = await this.fetchWithCache(
+                `${this.baseUrls.core}/seasons/2024/types/2/teams/${teamId}/statistics`,
+                3600 // 1 hour cache
+            );
+    
+            const bettingStats = {
+                offense: {
+                    pointsPerGame: this.extractStat(stats, 'scoring', 'totalPointsPerGame'),
+                    totalYards: this.extractStat(stats, 'general', 'totalYards'),
+                    passingYards: this.extractStat(stats, 'passing', 'netPassingYards'),
+                    rushingYards: this.extractStat(stats, 'rushing', 'rushingYards')
+                },
+                defense: {
+                    pointsAllowed: this.extractStat(stats, 'defensive', 'pointsAllowed'),
+                    sacks: this.extractStat(stats, 'defensive', 'sacks'),
+                    interceptions: this.extractStat(stats, 'defensiveInterceptions', 'interceptions')
+                },
+                trends: {
+                    homeRecord: this.extractStat(stats, 'miscellaneous', 'homeRecord'),
+                    awayRecord: this.extractStat(stats, 'miscellaneous', 'awayRecord'),
+                    lastFiveGames: this.extractStat(stats, 'miscellaneous', 'lastFiveGames')
+                }
+            };
+    
+            await this.storage.setCache(cacheKey, bettingStats, 3600);
+            return bettingStats;
+    
+        } catch (error) {
+            console.error(`Failed to load betting stats for team ${teamId}:`, error);
+            return null;
+        }
     }
 
     // Live game data for real-time betting
     async getLiveGameData() {
-        return this.fetchWithCache(`${this.baseUrls.site}/scoreboard`);
+        try {
+            const scoreboard = await this.fetchWithCache(
+                `${this.baseUrls.site}/scoreboard`,
+                300 // 5 minute cache
+            );
+    
+            if (!scoreboard?.events) {
+                console.warn('Invalid scoreboard data received');
+                return null;
+            }
+    
+            return scoreboard;
+        } catch (error) {
+            console.error("Error fetching live game data:", error);
+            return null;
+        }
     }
 
     // UTILITY FUNCTIONS
 
-    async fetchWithCache(url, expireSeconds = 3600, retries = 3) {
-        // Set different cache times based on URL content
+    async fetchWithCache(url, expireSeconds = null, retries = 3) {
+        // Set cache times based on content type
         if (expireSeconds === null) {
-            // Yeah we're making this a LOT longer haha
             if (url.includes('roster')) {
                 expireSeconds = 86400; // 24 hours for roster data
             } else if (url.includes('statistics')) {
@@ -622,52 +808,56 @@ class NFLDataService {
                 expireSeconds = 3600; // Default 1 hour
             }
         }
-
+    
         // Check cache first
-        const cachedData = this.cache.get(url);
-        if (cachedData) {
-            console.log(`Cache hit for ${url}`);
-            return cachedData;
+        try {
+            const cachedData = await this.storage.getCache(url);
+            if (cachedData) {
+                console.log(`Cache hit for ${url}`);
+                return cachedData;
+            }
+            console.log(`Cache miss for ${url}`);
+        } catch (error) {
+            console.warn(`Cache read error for ${url}:`, error);
         }
-        console.log(`Cache miss for ${url}`);
-
-        for (let i = 0; i < retries; i++) {                    // Retry loop
+    
+        // Retry loop
+        for (let i = 0; i < retries; i++) {
             try {
-                await this.throttleRequest();                   // Rate limiting
-
-                // We do this once above, if this code executes method returns
-
-                // Works in both Node and browser
-                // const cachedData = this.cache.get(url);        // Check cache first
-                // if (cachedData) {
-                //     return cachedData;
-                // }
-
-                const response = await fetch(url);              // Make API request
+                await this.throttleRequest(); // Rate limiting
+    
+                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status} for ${url}`);
                 }
-
-                const data = await response.json();             // Parse response
+    
+                const data = await response.json();
                 if (!data) {
                     throw new Error(`No data received from ${url}`);
                 }
-
-                // Check for error responses from ESPN API
+    
                 if (data.error) {
                     throw new Error(`ESPN API error: ${data.error.message || JSON.stringify(data.error)}`);
                 }
-
-                // Store in cache. Works in both Node and browser
-                this.cache.set(url, data, expireSeconds);      // Store in cache
-                console.log(`Cached data for ${url} (expires in ${expireSeconds}s)`);
-
+    
+                // Store in cache
+                try {
+                    await this.storage.setCache(url, data, expireSeconds);
+                    console.log(`Cached data for ${url} (expires in ${expireSeconds}s)`);
+                } catch (cacheError) {
+                    console.warn(`Cache write error for ${url}:`, cacheError);
+                    // Continue even if caching fails
+                }
+    
                 return data;
-
+    
             } catch (error) {
                 console.error(`Attempt ${i + 1}/${retries} failed for ${url}:`, error.message);
-                if (i === retries - 1) throw error;
-
+                
+                if (i === retries - 1) {
+                    throw error; // Throw on final retry
+                }
+    
                 // Exponential backoff
                 const waitTime = Math.pow(2, i) * 1000;
                 console.log(`Waiting ${waitTime}ms before retry...`);
@@ -743,41 +933,59 @@ class NFLDataService {
     // GAME DATA FUNCTIONS
 
     async getUpcomingGames() {
-        const scoreboard = await this.fetchWithCache(`${this.baseUrls.site}/scoreboard`);
-        return scoreboard.events.map(event => ({
-            id: event.id,
-            homeTeam: {
-                id: event.competitions[0].competitors[0].id,
-                name: event.competitions[0].competitors[0].team.name,
-                score: event.competitions[0].competitors[0].score
-            },
-            awayTeam: {
-                id: event.competitions[0].competitors[1].id,
-                name: event.competitions[0].competitors[1].team.name,
-                score: event.competitions[0].competitors[1].score
-            },
-            startTime: event.date,
-            spread: this.extractSpread(event),
-            overUnder: this.extractOverUnder(event),
-            status: event.status.type.detail
-        }));
+        try {
+            const scoreboard = await this.fetchWithCache(
+                `${this.baseUrls.site}/scoreboard`,
+                300 // 5 minute cache
+            );
+            
+            return scoreboard.events.map(event => ({
+                id: event.id,
+                homeTeam: {
+                    id: event.competitions[0].competitors[0].id,
+                    name: event.competitions[0].competitors[0].team.name,
+                    score: event.competitions[0].competitors[0].score,
+                    logo: event.competitions[0].competitors[0].team.logo
+                },
+                awayTeam: {
+                    id: event.competitions[0].competitors[1].id,
+                    name: event.competitions[0].competitors[1].team.name,
+                    score: event.competitions[0].competitors[1].score,
+                    logo: event.competitions[0].competitors[1].team.logo
+                },
+                startTime: event.date,
+                spread: this.extractSpread(event),
+                overUnder: this.extractOverUnder(event),
+                status: event.status.type.detail
+            }));
+        } catch (error) {
+            console.error("Error fetching upcoming games:", error);
+            return [];
+        }
     }
 
     async getGameDetails(gameId) {
         if (!gameId || gameId === 'invalid_game') {
             throw new Error('Invalid game ID provided');
         }
-
+    
         try {
+            const cacheKey = `game_details_${gameId}`;
+            const cachedDetails = await this.storage.getCache(cacheKey);
+            if (cachedDetails) {
+                return cachedDetails;
+            }
+    
             const game = await this.fetchWithCache(
-                `${this.baseUrls.site}/summary?event=${gameId}`
+                `${this.baseUrls.site}/summary?event=${gameId}`,
+                300 // 5 minute cache for game details
             );
-
+    
             if (!game) {
                 throw new Error('No game data found');
             }
-
-            return {
+    
+            const gameDetails = {
                 gameInfo: {
                     startTime: game?.header?.timeValid || null,
                     venue: game?.gameInfo?.venue?.fullName || null,
@@ -802,9 +1010,13 @@ class NFLDataService {
                     away: game?.header?.competitions?.[0]?.competitors?.[1]?.score || '0'
                 }
             };
+    
+            await this.storage.setCache(cacheKey, gameDetails, 300);
+            return gameDetails;
+    
         } catch (error) {
             console.error("Error fetching game details:", error);
-            throw error; // Rethrow to ensure error test catches it
+            throw error;
         }
     }
 
@@ -812,36 +1024,30 @@ class NFLDataService {
 
     async getBettingData(gameId) {
         if (!gameId) throw new Error('Game ID is required');
-
+    
+        const cacheKey = `betting_data_${gameId}`;
         try {
-            const odds = await this.fetchWithCache(
-                `${this.baseUrls.core}/events/${gameId}/competitions/${gameId}/odds`
-            );
-
-            // Check if odds data exists
-            if (!odds || !odds[0]) {
-                return {
-                    spread: null,
-                    moneyline: null,
-                    overUnder: null,
-                    movements: []
-                };
+            const cachedData = await this.storage.getCache(cacheKey);
+            if (cachedData) {
+                return cachedData;
             }
-
+    
+            const odds = await this.fetchWithCache(
+                `${this.baseUrls.core}/events/${gameId}/competitions/${gameId}/odds`,
+                300 // 5 minute cache for betting data
+            );
+    
+            if (!odds || !odds[0]) {
+                return this.getEmptyBettingData();
+            }
+    
             const currentOdds = odds[0];
-
-            // Validate the odds data structure
             if (!this.validateResponse(currentOdds, 'ODDS')) {
                 console.warn('Invalid odds data structure received');
-                return {
-                    spread: null,
-                    moneyline: null,
-                    overUnder: null,
-                    movements: []
-                };
+                return this.getEmptyBettingData();
             }
-
-            return {
+    
+            const bettingData = {
                 spread: currentOdds.spread ? {
                     favorite: currentOdds.spread.favorite?.abbreviation || null,
                     line: currentOdds.spread.line || null,
@@ -863,15 +1069,23 @@ class NFLDataService {
                     to: m.to
                 })) || []
             };
+    
+            await this.storage.setCache(cacheKey, bettingData, 300);
+            return bettingData;
+    
         } catch (error) {
             console.error("Error fetching betting data:", error);
-            return {
-                spread: null,
-                moneyline: null,
-                overUnder: null,
-                movements: []
-            };
+            return this.getEmptyBettingData();
         }
+    }
+
+    getEmptyBettingData() {
+        return {
+            spread: null,
+            moneyline: null,
+            overUnder: null,
+            movements: []
+        };
     }
 
     async getTeamTrends(teamId) {
@@ -908,78 +1122,109 @@ class NFLDataService {
     // FANTASY DATA FUNCTIONS
 
     async getPlayerProjections(playerId) {
-        // const stats = await this.fetchWithCache(
-        //     `${this.baseUrls.core}/seasons/2024/types/2/athletes/${playerId}/projections`
-        // );
-
-        // Historical data ok for projections
-        const stats = await this.getSeasonData(
-            `${this.baseUrls.core}/athletes/${playerId}/projections`,
-            'types/2',
-            false
-        );
-
-        return {
-            passing: {
-                attempts: this.extractStat(stats, 'passing', 'passingAttempts'),
-                completions: this.extractStat(stats, 'passing', 'completions'),
-                yards: this.extractStat(stats, 'passing', 'passingYards'),
-                touchdowns: this.extractStat(stats, 'passing', 'passingTouchdowns'),
-                interceptions: this.extractStat(stats, 'passing', 'interceptions')
-            },
-            rushing: {
-                attempts: this.extractStat(stats, 'rushing', 'rushingAttempts'),
-                yards: this.extractStat(stats, 'rushing', 'rushingYards'),
-                touchdowns: this.extractStat(stats, 'rushing', 'rushingTouchdowns')
-            },
-            receiving: {
-                targets: this.extractStat(stats, 'receiving', 'receivingTargets'),
-                receptions: this.extractStat(stats, 'receiving', 'receptions'),
-                yards: this.extractStat(stats, 'receiving', 'receivingYards'),
-                touchdowns: this.extractStat(stats, 'receiving', 'receivingTouchdowns')
+        const cacheKey = `player_projections_${playerId}`;
+        try {
+            const cachedProjections = await this.storage.getCache(cacheKey);
+            if (cachedProjections) {
+                return cachedProjections;
             }
-        };
+    
+            // Use historical data for projections
+            const stats = await this.getSeasonData(
+                `${this.baseUrls.core}/athletes/${playerId}/projections`,
+                'types/2',
+                false
+            );
+    
+            const projections = {
+                passing: {
+                    attempts: this.extractStat(stats, 'passing', 'passingAttempts'),
+                    completions: this.extractStat(stats, 'passing', 'completions'),
+                    yards: this.extractStat(stats, 'passing', 'passingYards'),
+                    touchdowns: this.extractStat(stats, 'passing', 'passingTouchdowns'),
+                    interceptions: this.extractStat(stats, 'passing', 'interceptions')
+                },
+                rushing: {
+                    attempts: this.extractStat(stats, 'rushing', 'rushingAttempts'),
+                    yards: this.extractStat(stats, 'rushing', 'rushingYards'),
+                    touchdowns: this.extractStat(stats, 'rushing', 'rushingTouchdowns')
+                },
+                receiving: {
+                    targets: this.extractStat(stats, 'receiving', 'receivingTargets'),
+                    receptions: this.extractStat(stats, 'receiving', 'receptions'),
+                    yards: this.extractStat(stats, 'receiving', 'receivingYards'),
+                    touchdowns: this.extractStat(stats, 'receiving', 'receivingTouchdowns')
+                }
+            };
+    
+            await this.storage.setCache(cacheKey, projections, 7200); // 2 hour cache for projections
+            return projections;
+    
+        } catch (error) {
+            console.error(`Failed to load projections for player ${playerId}:`, error);
+            return null;
+        }
     }
 
     async getPlayerMatchupStats(playerId, opponentId) {
-        const [playerStats, opponentStats] = await Promise.all([
-            this.getPlayerStats(playerId),
-            this.getTeamDefensiveStats(opponentId)
-        ]);
-
-        return {
-            player: {
-                seasonAverages: {
-                    passingYards: this.extractStat(playerStats, 'passing', 'passingYardsPerGame'),
-                    rushingYards: this.extractStat(playerStats, 'rushing', 'rushingYardsPerGame'),
-                    receivingYards: this.extractStat(playerStats, 'receiving', 'receivingYardsPerGame')
-                },
-                recentForm: this.extractLastNGames(playerStats, 3)
-            },
-            opponent: {
-                vsPosition: {
-                    passingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'passingYardsAllowedPerGame'),
-                    rushingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'rushingYardsAllowedPerGame'),
-                    receivingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'receivingYardsAllowedPerGame')
-                },
-                recentDefense: this.extractLastNGames(opponentStats, 3)
+        const cacheKey = `player_matchup_${playerId}_${opponentId}`;
+        try {
+            const cachedMatchup = await this.storage.getCache(cacheKey);
+            if (cachedMatchup) {
+                return cachedMatchup;
             }
-        };
+    
+            const [playerStats, opponentStats] = await Promise.all([
+                this.getPlayerStats(playerId),
+                this.getTeamDefensiveStats(opponentId)
+            ]);
+    
+            const matchupStats = {
+                player: {
+                    seasonAverages: {
+                        passingYards: this.extractStat(playerStats, 'passing', 'passingYardsPerGame'),
+                        rushingYards: this.extractStat(playerStats, 'rushing', 'rushingYardsPerGame'),
+                        receivingYards: this.extractStat(playerStats, 'receiving', 'receivingYardsPerGame')
+                    },
+                    recentForm: this.extractLastNGames(playerStats, 3)
+                },
+                opponent: {
+                    vsPosition: {
+                        passingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'passingYardsAllowedPerGame'),
+                        rushingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'rushingYardsAllowedPerGame'),
+                        receivingYardsAllowed: this.extractStat(opponentStats, 'defensive', 'receivingYardsAllowedPerGame')
+                    },
+                    recentDefense: this.extractLastNGames(opponentStats, 3)
+                }
+            };
+    
+            await this.storage.setCache(cacheKey, matchupStats, 3600); // 1 hour cache
+            return matchupStats;
+    
+        } catch (error) {
+            console.error(`Failed to load matchup stats for player ${playerId} vs ${opponentId}:`, error);
+            return null;
+        }
     }
 
     async getSeasonData(endpoint, params, requireCurrent = false) {
         try {
+            const currentYear = '2024';
+            const fallbackYear = '2023';
+            
             // Try current season first
             const currentData = await this.fetchWithCache(
-                `${endpoint}/${this.currentSeason}/${params}`
+                `${endpoint}/${currentYear}/${params}`,
+                3600
             );
             if (currentData) return currentData;
-
+    
             // If current season fails and we don't require current data
             if (!requireCurrent) {
-                console.log(`Falling back to ${this.fallbackSeason} data`);
+                console.log(`Falling back to ${fallbackYear} data`);
                 return await this.fetchWithCache(
-                    `${endpoint}/${this.fallbackSeason}/${params}`
+                    `${endpoint}/${fallbackYear}/${params}`,
+                    3600
                 );
             }
             return null;
@@ -1001,24 +1246,40 @@ class NFLDataService {
 
     // For moneyline/spread predictions
     async getTeamPerformanceMetrics(teamId) {
-        const stats = await this.fetchWithCache(
-            `${this.baseUrls.core}/seasons/2024/types/2/teams/${teamId}/statistics`
-        );
-
-        return {
-            offense: {
-                pointsPerGame: this.extractStat(stats, 'scoring', 'totalPointsPerGame'),
-                yardsPerGame: this.extractStat(stats, 'passing', 'yardsPerGame'),
-                thirdDownConvPct: this.extractStat(stats, 'miscellaneous', 'thirdDownConvPct'),
-                redZoneEfficiency: this.extractStat(stats, 'miscellaneous', 'redzoneScoringPct')
-            },
-            defense: {
-                pointsAllowedPerGame: this.extractStat(stats, 'defensive', 'pointsAllowed'),
-                yardsAllowedPerGame: this.extractStat(stats, 'defensive', 'yardsAllowed'),
-                sacks: this.extractStat(stats, 'defensive', 'sacks'),
-                takeaways: this.extractStat(stats, 'miscellaneous', 'totalTakeaways')
+        const cacheKey = `team_performance_${teamId}`;
+        try {
+            const cachedMetrics = await this.storage.getCache(cacheKey);
+            if (cachedMetrics) {
+                return cachedMetrics;
             }
-        };
+    
+            const stats = await this.fetchWithCache(
+                `${this.baseUrls.core}/seasons/2024/types/2/teams/${teamId}/statistics`,
+                3600
+            );
+    
+            const metrics = {
+                offense: {
+                    pointsPerGame: this.extractStat(stats, 'scoring', 'totalPointsPerGame'),
+                    yardsPerGame: this.extractStat(stats, 'passing', 'yardsPerGame'),
+                    thirdDownConvPct: this.extractStat(stats, 'miscellaneous', 'thirdDownConvPct'),
+                    redZoneEfficiency: this.extractStat(stats, 'miscellaneous', 'redzoneScoringPct')
+                },
+                defense: {
+                    pointsAllowedPerGame: this.extractStat(stats, 'defensive', 'pointsAllowed'),
+                    yardsAllowedPerGame: this.extractStat(stats, 'defensive', 'yardsAllowed'),
+                    sacks: this.extractStat(stats, 'defensive', 'sacks'),
+                    takeaways: this.extractStat(stats, 'miscellaneous', 'totalTakeaways')
+                }
+            };
+    
+            await this.storage.setCache(cacheKey, metrics, 3600);
+            return metrics;
+    
+        } catch (error) {
+            console.error(`Failed to load performance metrics for team ${teamId}:`, error);
+            return null;
+        }
     }
 
     // For player props
