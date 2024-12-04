@@ -281,15 +281,65 @@ class DashboardManager {
     async updateTopPlayers() {
         try {
             const players = await this.api.getAllActivePlayers();
+            
+            // Enhance players with stats
+            const enhancedPlayers = await Promise.all(
+                players.slice(0, 5).map(async (player) => {
+                    const stats = await this.api.getPlayerFantasyStats(player.id);
+                    const fantasyPoints = await this.calculateFantasyPoints(stats);
+                    return { ...player, fantasyPoints };
+                })
+            );
+    
+            // Clear container
             clearElement(this.containers.topPlayers);
-
-            players.slice(0, 5).forEach(player => {
-                const playerElement = this.createPlayerElement(player);
-                this.containers.topPlayers.appendChild(playerElement);
-            });
+    
+            // Create and append player elements
+            for (const player of enhancedPlayers) {
+                const playerElement = await this.createPlayerElement(player);
+                if (playerElement instanceof HTMLElement) {
+                    this.containers.topPlayers.appendChild(playerElement);
+                } else {
+                    console.error('Invalid player element:', playerElement);
+                }
+            }
         } catch (error) {
             handleError(error, 'updateTopPlayers');
         }
+    }
+    
+    
+    
+    // Enhance a single player with stats (helper method)
+    async enhancePlayersWithStats(players) {
+        return Promise.all(players.map(async (player) => {
+            try {
+                const stats = await this.api.getPlayerFantasyStats(player.id);
+                console.log(`Stats for ${player.fullName}:`, stats); // Debugging
+                const fantasyPoints = await this.calculateFantasyPoints(stats);
+                console.log(`Fantasy Points for ${player.fullName}:`, fantasyPoints); // Debugging
+                return { ...player, fantasyStats: stats, fantasyPoints };
+            } catch (error) {
+                console.warn(`Failed to load stats for player ${player.id}`, error);
+                return player;
+            }
+        }));
+    }
+    
+    
+    async calculateFantasyPoints(stats) {
+        if (!stats) return 0;
+        
+        // Basic PPR scoring
+        return (
+            (stats.passing?.yards?.value || 0) * 0.04 +
+            (stats.passing?.touchdowns?.value || 0) * 4 +
+            (stats.rushing?.yards?.value || 0) * 0.1 +
+            (stats.rushing?.touchdowns?.value || 0) * 6 +
+            (stats.receiving?.receptions?.value || 0) * 1 +
+            (stats.receiving?.yards?.value || 0) * 0.1 +
+            (stats.receiving?.touchdowns?.value || 0) * 6
+        );
     }
 
     // startUpdateIntervals() {
@@ -481,42 +531,45 @@ class DashboardManager {
         }
     }
 
-    createPlayerElement(player) {
+    async createPlayerElement(player) {
         const element = createElement('div', 'player-card');
         
-        // Use the correct endpoint for player headshots
         const playerHeadshot = player.headshot || `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.id}.png&h=150&w=150&scale=crop`;
         
+        let playerStatus = 'Unknown';
+        try {
+            if (player.team) {
+                const response = await fetch(`https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams/${player.team}/injuries`);
+                const data = await response.json();
+                
+                const injuryData = data.items?.find(item => item.$ref.includes(player.id));
+                playerStatus = injuryData ? 'Injured' : 'Healthy';
+            }
+        } catch (error) {
+            console.warn(`Failed to fetch status for player ${player.id}:`, error);
+        }
+    
         element.innerHTML = `
             <div class="player-header">
-                <img src="${playerHeadshot}" 
-                     alt="${player.fullName}" 
-                     class="player-image">
+                <img src="${playerHeadshot}" alt="${player.fullName}" class="player-image">
                 <h3>${player.fullName}</h3>
             </div>
             <div class="player-info">
-                <div class="info-row">
-                    <span>Position:</span>
-                    <span>${player.position}</span>
-                </div>
-                <div class="info-row">
-                    <span>Team:</span>
-                    <span>${player.team}</span>
-                </div>
-                <div class="info-row">
-                    <span>Fantasy Pts:</span>
-                    <span>${player.fantasyPoints?.toFixed(1) || '0.0'}</span>
-                </div>
-                <div class="info-row">
-                    <span>Status:</span>
-                    <span>${player.status?.type || 'Unknown'}</span>
-                </div>
+                <div class="info-row"><span>Position:</span><span>${player.position}</span></div>
+                <div class="info-row"><span>Team:</span><span>${player.team}</span></div>
+                <div class="info-row"><span>Fantasy Pts:</span><span>${player.fantasyPoints?.toFixed(1) || '0.0'}</span></div>
+                <div class="info-row"><span>Status:</span><span>${playerStatus}</span></div>
             </div>
             <a href="players.html?id=${player.id}" class="player-link">View Details</a>
         `;
+    
+        console.log('Created player element:', element);
         return element;
     }
     
+    
+    
+
 
     async updateInsights() {
         try {
