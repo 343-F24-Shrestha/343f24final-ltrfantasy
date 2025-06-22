@@ -174,8 +174,8 @@ class PlayersManager {
                 ${this.getPositionSpecificStats(player)}
             </div>
             <div class="player-actions">
-                <button onclick="addToLineup(${player.id})" class="add-to-lineup">Add to Lineup</button>
-                <button onclick="showPlayerDetails(${player.id})" class="view-details">View Details</button>
+                <button onclick="playersManager.addToLineup(${player.id})" class="add-to-lineup">Add to Lineup</button>
+                <button onclick="playersManager.showPlayerDetails(${player.id})" class="view-details">View Details</button>
             </div>
         `;
 
@@ -203,6 +203,10 @@ class PlayersManager {
             default:
                 return '';
         }
+    }
+
+    addToLineup(playerId) {
+        window.lineupManager.addPlayer(playerId);
     }
 }
 

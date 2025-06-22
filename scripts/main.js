@@ -27,6 +27,7 @@ class App {
                 case 'players':
                     const { default: PlayersManager } = await import('./pages/players.js');
                     this.activeManager = new PlayersManager();
+                    window.playersManager = this.activeManager; 
                     await this.activeManager.init();
                     break;
 
@@ -43,7 +44,7 @@ class App {
                     // break;
                     const { default: LineupManager } = await import('./pages/lineups.js');
                     this.activeManager = new LineupManager();
-                    window.lineupManager = this.activeManager; // Add this line
+                    window.lineupManager = this.activeManager;
                     await this.activeManager.init();
                     break;
 
